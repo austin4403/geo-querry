@@ -1,0 +1,15 @@
+// client communication with go backend
+syntax = "proto3";
+
+package geoquerry.v1;
+
+import "geoquerry/v1/sync.proto";
+import "geoquerry/v1/telemetry.proto";
+
+option go_package = "gitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerryv1";
+
+service GeoquerrySyncService {
+  rpc PushSyncQueue(PushSyncQueueRequest) returns (PushSyncQueueResponse);
+  rpc PullProjectData(PullProjectDataRequest) returns (PullProjectDataResponse);
+  rpc StreamLiveTelemetry(stream StreamLiveTelemetryRequest) returns (stream StreamLiveTelemetryResponse);
+}
