@@ -10,7 +10,7 @@ import (
 	connect "connectrpc.com/connect"
 	context "context"
 	errors "errors"
-	geoquerryv1 "gitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerryv1"
+	v1 "gitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerry/v1"
 	http "net/http"
 	strings "strings"
 )
@@ -48,9 +48,9 @@ const (
 
 // GeoquerrySyncServiceClient is a client for the geoquerry.v1.GeoquerrySyncService service.
 type GeoquerrySyncServiceClient interface {
-	PushSyncQueue(context.Context, *connect.Request[geoquerryv1.PushSyncQueueRequest]) (*connect.Response[geoquerryv1.PushSyncQueueResponse], error)
-	PullProjectData(context.Context, *connect.Request[geoquerryv1.PullProjectDataRequest]) (*connect.Response[geoquerryv1.PullProjectDataResponse], error)
-	StreamLiveTelemetry(context.Context) *connect.BidiStreamForClient[geoquerryv1.StreamLiveTelemetryRequest, geoquerryv1.StreamLiveTelemetryResponse]
+	PushSyncQueue(context.Context, *connect.Request[v1.PushSyncQueueRequest]) (*connect.Response[v1.PushSyncQueueResponse], error)
+	PullProjectData(context.Context, *connect.Request[v1.PullProjectDataRequest]) (*connect.Response[v1.PullProjectDataResponse], error)
+	StreamLiveTelemetry(context.Context) *connect.BidiStreamForClient[v1.StreamLiveTelemetryRequest, v1.StreamLiveTelemetryResponse]
 }
 
 // NewGeoquerrySyncServiceClient constructs a client for the geoquerry.v1.GeoquerrySyncService
@@ -62,21 +62,21 @@ type GeoquerrySyncServiceClient interface {
 // http://api.acme.com or https://acme.com/grpc).
 func NewGeoquerrySyncServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) GeoquerrySyncServiceClient {
 	baseURL = strings.TrimRight(baseURL, "/")
-	geoquerrySyncServiceMethods := geoquerryv1.File_geoquerry_v1_service_proto.Services().ByName("GeoquerrySyncService").Methods()
+	geoquerrySyncServiceMethods := v1.File_geoquerry_v1_service_proto.Services().ByName("GeoquerrySyncService").Methods()
 	return &geoquerrySyncServiceClient{
-		pushSyncQueue: connect.NewClient[geoquerryv1.PushSyncQueueRequest, geoquerryv1.PushSyncQueueResponse](
+		pushSyncQueue: connect.NewClient[v1.PushSyncQueueRequest, v1.PushSyncQueueResponse](
 			httpClient,
 			baseURL+GeoquerrySyncServicePushSyncQueueProcedure,
 			connect.WithSchema(geoquerrySyncServiceMethods.ByName("PushSyncQueue")),
 			connect.WithClientOptions(opts...),
 		),
-		pullProjectData: connect.NewClient[geoquerryv1.PullProjectDataRequest, geoquerryv1.PullProjectDataResponse](
+		pullProjectData: connect.NewClient[v1.PullProjectDataRequest, v1.PullProjectDataResponse](
 			httpClient,
 			baseURL+GeoquerrySyncServicePullProjectDataProcedure,
 			connect.WithSchema(geoquerrySyncServiceMethods.ByName("PullProjectData")),
 			connect.WithClientOptions(opts...),
 		),
-		streamLiveTelemetry: connect.NewClient[geoquerryv1.StreamLiveTelemetryRequest, geoquerryv1.StreamLiveTelemetryResponse](
+		streamLiveTelemetry: connect.NewClient[v1.StreamLiveTelemetryRequest, v1.StreamLiveTelemetryResponse](
 			httpClient,
 			baseURL+GeoquerrySyncServiceStreamLiveTelemetryProcedure,
 			connect.WithSchema(geoquerrySyncServiceMethods.ByName("StreamLiveTelemetry")),
@@ -87,32 +87,32 @@ func NewGeoquerrySyncServiceClient(httpClient connect.HTTPClient, baseURL string
 
 // geoquerrySyncServiceClient implements GeoquerrySyncServiceClient.
 type geoquerrySyncServiceClient struct {
-	pushSyncQueue       *connect.Client[geoquerryv1.PushSyncQueueRequest, geoquerryv1.PushSyncQueueResponse]
-	pullProjectData     *connect.Client[geoquerryv1.PullProjectDataRequest, geoquerryv1.PullProjectDataResponse]
-	streamLiveTelemetry *connect.Client[geoquerryv1.StreamLiveTelemetryRequest, geoquerryv1.StreamLiveTelemetryResponse]
+	pushSyncQueue       *connect.Client[v1.PushSyncQueueRequest, v1.PushSyncQueueResponse]
+	pullProjectData     *connect.Client[v1.PullProjectDataRequest, v1.PullProjectDataResponse]
+	streamLiveTelemetry *connect.Client[v1.StreamLiveTelemetryRequest, v1.StreamLiveTelemetryResponse]
 }
 
 // PushSyncQueue calls geoquerry.v1.GeoquerrySyncService.PushSyncQueue.
-func (c *geoquerrySyncServiceClient) PushSyncQueue(ctx context.Context, req *connect.Request[geoquerryv1.PushSyncQueueRequest]) (*connect.Response[geoquerryv1.PushSyncQueueResponse], error) {
+func (c *geoquerrySyncServiceClient) PushSyncQueue(ctx context.Context, req *connect.Request[v1.PushSyncQueueRequest]) (*connect.Response[v1.PushSyncQueueResponse], error) {
 	return c.pushSyncQueue.CallUnary(ctx, req)
 }
 
 // PullProjectData calls geoquerry.v1.GeoquerrySyncService.PullProjectData.
-func (c *geoquerrySyncServiceClient) PullProjectData(ctx context.Context, req *connect.Request[geoquerryv1.PullProjectDataRequest]) (*connect.Response[geoquerryv1.PullProjectDataResponse], error) {
+func (c *geoquerrySyncServiceClient) PullProjectData(ctx context.Context, req *connect.Request[v1.PullProjectDataRequest]) (*connect.Response[v1.PullProjectDataResponse], error) {
 	return c.pullProjectData.CallUnary(ctx, req)
 }
 
 // StreamLiveTelemetry calls geoquerry.v1.GeoquerrySyncService.StreamLiveTelemetry.
-func (c *geoquerrySyncServiceClient) StreamLiveTelemetry(ctx context.Context) *connect.BidiStreamForClient[geoquerryv1.StreamLiveTelemetryRequest, geoquerryv1.StreamLiveTelemetryResponse] {
+func (c *geoquerrySyncServiceClient) StreamLiveTelemetry(ctx context.Context) *connect.BidiStreamForClient[v1.StreamLiveTelemetryRequest, v1.StreamLiveTelemetryResponse] {
 	return c.streamLiveTelemetry.CallBidiStream(ctx)
 }
 
 // GeoquerrySyncServiceHandler is an implementation of the geoquerry.v1.GeoquerrySyncService
 // service.
 type GeoquerrySyncServiceHandler interface {
-	PushSyncQueue(context.Context, *connect.Request[geoquerryv1.PushSyncQueueRequest]) (*connect.Response[geoquerryv1.PushSyncQueueResponse], error)
-	PullProjectData(context.Context, *connect.Request[geoquerryv1.PullProjectDataRequest]) (*connect.Response[geoquerryv1.PullProjectDataResponse], error)
-	StreamLiveTelemetry(context.Context, *connect.BidiStream[geoquerryv1.StreamLiveTelemetryRequest, geoquerryv1.StreamLiveTelemetryResponse]) error
+	PushSyncQueue(context.Context, *connect.Request[v1.PushSyncQueueRequest]) (*connect.Response[v1.PushSyncQueueResponse], error)
+	PullProjectData(context.Context, *connect.Request[v1.PullProjectDataRequest]) (*connect.Response[v1.PullProjectDataResponse], error)
+	StreamLiveTelemetry(context.Context, *connect.BidiStream[v1.StreamLiveTelemetryRequest, v1.StreamLiveTelemetryResponse]) error
 }
 
 // NewGeoquerrySyncServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -121,7 +121,7 @@ type GeoquerrySyncServiceHandler interface {
 // By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
 // and JSON codecs. They also support gzip compression.
 func NewGeoquerrySyncServiceHandler(svc GeoquerrySyncServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
-	geoquerrySyncServiceMethods := geoquerryv1.File_geoquerry_v1_service_proto.Services().ByName("GeoquerrySyncService").Methods()
+	geoquerrySyncServiceMethods := v1.File_geoquerry_v1_service_proto.Services().ByName("GeoquerrySyncService").Methods()
 	geoquerrySyncServicePushSyncQueueHandler := connect.NewUnaryHandler(
 		GeoquerrySyncServicePushSyncQueueProcedure,
 		svc.PushSyncQueue,
@@ -157,14 +157,14 @@ func NewGeoquerrySyncServiceHandler(svc GeoquerrySyncServiceHandler, opts ...con
 // UnimplementedGeoquerrySyncServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedGeoquerrySyncServiceHandler struct{}
 
-func (UnimplementedGeoquerrySyncServiceHandler) PushSyncQueue(context.Context, *connect.Request[geoquerryv1.PushSyncQueueRequest]) (*connect.Response[geoquerryv1.PushSyncQueueResponse], error) {
+func (UnimplementedGeoquerrySyncServiceHandler) PushSyncQueue(context.Context, *connect.Request[v1.PushSyncQueueRequest]) (*connect.Response[v1.PushSyncQueueResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("geoquerry.v1.GeoquerrySyncService.PushSyncQueue is not implemented"))
 }
 
-func (UnimplementedGeoquerrySyncServiceHandler) PullProjectData(context.Context, *connect.Request[geoquerryv1.PullProjectDataRequest]) (*connect.Response[geoquerryv1.PullProjectDataResponse], error) {
+func (UnimplementedGeoquerrySyncServiceHandler) PullProjectData(context.Context, *connect.Request[v1.PullProjectDataRequest]) (*connect.Response[v1.PullProjectDataResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("geoquerry.v1.GeoquerrySyncService.PullProjectData is not implemented"))
 }
 
-func (UnimplementedGeoquerrySyncServiceHandler) StreamLiveTelemetry(context.Context, *connect.BidiStream[geoquerryv1.StreamLiveTelemetryRequest, geoquerryv1.StreamLiveTelemetryResponse]) error {
+func (UnimplementedGeoquerrySyncServiceHandler) StreamLiveTelemetry(context.Context, *connect.BidiStream[v1.StreamLiveTelemetryRequest, v1.StreamLiveTelemetryResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("geoquerry.v1.GeoquerrySyncService.StreamLiveTelemetry is not implemented"))
 }

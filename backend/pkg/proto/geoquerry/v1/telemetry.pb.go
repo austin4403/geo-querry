@@ -339,7 +339,7 @@ const file_geoquerry_v1_telemetry_proto_rawDesc = "" +
 	"\x1bStreamLiveTelemetryResponse\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\x03R\tprojectId\x12:\n" +
-	"\amembers\x18\x02 \x03(\v2 .geoquerry.v1.TeamMemberLocationR\amembersB?Z=gitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerryv1b\x06proto3"
+	"\amembers\x18\x02 \x03(\v2 .geoquerry.v1.TeamMemberLocationR\amembersBLZJgitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerry/v1;geoquerryv1b\x06proto3"
 
 var (
 	file_geoquerry_v1_telemetry_proto_rawDescOnce sync.Once

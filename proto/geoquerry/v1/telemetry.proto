@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package geoquerry.v1;
 
-option go_package = "gitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerryv1";
+option go_package = "gitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerry/v1;geoquerryv1";
 
 message StreamLiveTelemetryRequest {
   string user_id = 1;

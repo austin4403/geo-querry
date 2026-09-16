@@ -30,7 +30,7 @@ const file_geoquerry_v1_service_proto_rawDesc = "" +
 	"\x14GeoquerrySyncService\x12X\n" +
 	"\rPushSyncQueue\x12\".geoquerry.v1.PushSyncQueueRequest\x1a#.geoquerry.v1.PushSyncQueueResponse\x12^\n" +
 	"\x0fPullProjectData\x12$.geoquerry.v1.PullProjectDataRequest\x1a%.geoquerry.v1.PullProjectDataResponse\x12n\n" +
-	"\x13StreamLiveTelemetry\x12(.geoquerry.v1.StreamLiveTelemetryRequest\x1a).geoquerry.v1.StreamLiveTelemetryResponse(\x010\x01B?Z=gitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerryv1b\x06proto3"
+	"\x13StreamLiveTelemetry\x12(.geoquerry.v1.StreamLiveTelemetryRequest\x1a).geoquerry.v1.StreamLiveTelemetryResponse(\x010\x01BLZJgitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerry/v1;geoquerryv1b\x06proto3"
 
 var file_geoquerry_v1_service_proto_goTypes = []any{
 	(*PushSyncQueueRequest)(nil),        // 0: geoquerry.v1.PushSyncQueueRequest

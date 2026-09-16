@@ -521,7 +521,7 @@ const file_geoquerry_v1_sync_proto_rawDesc = "" +
 	"\x12SYNC_STATUS_SYNCED\x10\x01\x12\"\n" +
 	"\x1eSYNC_STATUS_CONFLICT_OVERWROTE\x10\x02\x12\x1e\n" +
 	"\x1aSYNC_STATUS_CONFLICT_STALE\x10\x03\x12\x18\n" +
-	"\x14SYNC_STATUS_REJECTED\x10\x04B?Z=gitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerryv1b\x06proto3"
+	"\x14SYNC_STATUS_REJECTED\x10\x04BLZJgitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerry/v1;geoquerryv1b\x06proto3"
 
 var (
 	file_geoquerry_v1_sync_proto_rawDescOnce sync.Once

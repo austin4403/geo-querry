@@ -961,7 +961,7 @@ const file_geoquerry_v1_geology_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\x05 \x01(\x03R\tupdatedAt\x12\x1d\n" +
 	"\n" +
-	"is_deleted\x18\x06 \x01(\bR\tisDeletedB?Z=gitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerryv1b\x06proto3"
+	"is_deleted\x18\x06 \x01(\bR\tisDeletedBLZJgitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerry/v1;geoquerryv1b\x06proto3"
 
 var (
 	file_geoquerry_v1_geology_proto_rawDescOnce sync.Once
