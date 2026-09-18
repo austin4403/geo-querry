@@ -30,6 +30,22 @@ geo-querry/
 
 We are in **Phase 1: Foundation & Backend**:
 
-1. Protobuf definitions (`proto/geoquerry/v1/*.proto`) created.
-2. PostGIS spatial database migrations (`backend/internal/db/migrations/000001_init.sql`) created.
-3. Next steps: Go backend code generation, database connection pool, sync engine, and Koyeb deployment pipeline.
+1. ✅ Protobuf definitions (`proto/geoquerry/v1/*.proto`) with generated Go + ConnectRPC code.
+2. ✅ PostGIS spatial schema (`backend/internal/db/migrations/000001_init.sql`), auto-applied at boot from SQL embedded in the binary.
+3. ✅ Go backend core: `GeoquerrySyncService` fully implemented — `PushSyncQueue` (offline batch upserts with Last-Write-Wins conflict resolution), `PullProjectData` (delta sync with clock-skew overlap), and `StreamLiveTelemetry` (live team tracking hub with TTL expiry).
+4. ✅ Ops: CORS for the web portal, request logging, `/livez` + `/readyz` health checks, graceful shutdown, multi-stage scratch Dockerfile.
+5. ⏳ Next: R2 presigned photo uploads, M-Pesa STK push, Paystack webhooks, GitLab CI/CD + Koyeb deployment, then the Flutter and Next.js clients.
+
+### Run it locally
+
+```bash
+# 1. A Postgres with PostGIS (e.g. Neon free tier), then:
+export DATABASE_URL='postgres://user:pass@ep-xxx.neon.tech/neondb?sslmode=require'
+
+# 2. Start the API (migrations apply automatically on boot):
+cd backend && go run ./cmd/server     # listens on :8080
+
+# 3. Smoke: curl http://localhost:8080/livez
+```
+
+The Connect service answers at `/geoquerry.v1.GeoquerrySyncService/` in Connect, gRPC and gRPC-Web protocols (binary proto and JSON codecs) — point any Connect client at it.

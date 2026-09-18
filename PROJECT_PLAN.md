@@ -1,10 +1,10 @@
 # 🗺️ GeoQuerry — Master Project Plan, Progress & Architecture Guide
 
-> **Current Status**: Phase 1 Initiation (Data Contracts & Database Foundation)  
+> **Current Status**: Phase 1 — Backend core implemented (sync engine, LWW conflicts, live telemetry hub)  
 > **Repository**: `austin4403/geo-querry`  
 > **Target Platforms**: Mobile (iOS & Android), Desktop Studio (Linux, macOS, Windows), Web GIS Portal  
 > **Author & Lead**: Austin  
-> **Last Updated**: March 2026
+> **Last Updated**: September 2026
 
 ---
 
@@ -214,18 +214,23 @@ geo-querry/
 | [proto/geoquerry/v1/sync.proto](file:///home/austin/Projects/geo-querry/proto/geoquerry/v1/sync.proto) | ✅ Complete | Schemas for `PushSyncQueueRequest/Response`, `PullProjectDataRequest/Response`, `EntitySyncResult`. |
 | [proto/geoquerry/v1/telemetry.proto](file:///home/austin/Projects/geo-querry/proto/geoquerry/v1/telemetry.proto) | ✅ Complete | Schemas for `StreamLiveTelemetryRequest/Response`, `TeamMemberLocation`. |
 | [proto/geoquerry/v1/service.proto](file:///home/austin/Projects/geo-querry/proto/geoquerry/v1/service.proto) | ✅ Complete | RPC Service `GeoquerrySyncService` with push, pull, and stream endpoints. |
-| `proto/buf.gen.yaml` | ⏳ Pending | Code-generation templates for Go (`protoc-gen-go`, `connect-go`), Dart, and TS. |
+| `proto/buf.gen.yaml` | ✅ Go codegen complete | Generates Go protos + ConnectRPC stubs into `backend/pkg/proto`. Dart & TS plugins still to be added. |
 | **Backend Service (`backend/`)** | | |
-| [backend/internal/db/migrations/000001_init.sql](file:///home/austin/Projects/geo-querry/backend/internal/db/migrations/000001_init.sql) | ✅ Complete | PostGIS tables: `projects`, `concessions`, `stations`, `structural_measurements`, `rock_samples`, `vegetation`, `boreholes`, `borehole_intervals` with GIST indices. |
-| `backend/go.mod` | ⏳ Pending | Go module initialization (`gitlab.com/austin4403/geoquerry/backend`). |
-| `backend/cmd/server/main.go` | ⏳ Pending | HTTP & ConnectRPC server bootstrap. |
-| `backend/internal/db/db.go` | ⏳ Pending | Connection pool wrapper using `pgx/v5`. |
-| `backend/internal/sync/service.go` | ⏳ Pending | PushSyncQueue and PullProjectData database sync logic. |
-| `backend/internal/telemetry/hub.go` | ⏳ Pending | Real-time SSE / WebSocket broadcaster for field geologists. |
+| [backend/internal/db/migrations/000001_init.sql](file:///home/austin/Projects/geo-querry/backend/internal/db/migrations/000001_init.sql) | ✅ Complete | PostGIS tables: `projects`, `concessions`, `stations`, `structural_measurements`, `rock_samples`, `vegetation`, `boreholes`, `borehole_intervals` with GIST indices + documented sync conventions (unix-ms `updated_at`, soft deletes, PointZ geometry). |
+| `backend/go.mod` | ✅ Complete | Module `gitlab.com/austin4403/geoquerry/backend`; deps: connect v1.18, pgx v5.11 (needs Go 1.25 toolchain), google/uuid. |
+| `backend/cmd/server/main.go` | ✅ Complete | HTTP & ConnectRPC bootstrap: DB connect, embedded migrations, CORS for the web portal, request logging, `/livez` + `/readyz`, streaming-safe timeouts, graceful SIGTERM shutdown. |
+| `backend/internal/config/config.go` | ✅ Complete | Env-var config with validation (PORT, DATABASE_URL, pool sizing, CORS origins, telemetry TTL). Unit-tested. |
+| `backend/internal/db/db.go` | ✅ Complete | pgxpool manager + migration runner (embedded SQL, per-file transactions, `schema_migrations` bookkeeping). |
+| `backend/internal/sync/service.go` | ✅ Complete | PushSyncQueue & PullProjectData handlers: validation, parents-before-children ordering, per-entity results, 2-minute pull overlap guard against delta races. |
+| `backend/internal/sync/conflict.go` | ✅ Complete | Last-Write-Wins resolution + Postgres error → SyncStatus classification. Unit-tested. |
+| `backend/internal/sync/store.go` | ✅ Complete | LWW-guarded upserts (`ON CONFLICT ... WHERE updated_at <` + `xmax` insert-detection), delta pulls, borehole interval wholesale-replace in one tx. |
+| `backend/internal/telemetry/hub.go` | ✅ Complete | In-memory pub/sub: per-project snapshots, two-stage TTL expiry (grey-out → forget), slow-subscriber drop. Unit-tested. |
+| `backend/internal/telemetry/service.go` | ✅ Complete | StreamLiveTelemetry bidi handler (goroutine-multiplexed receive loop, leak-free). |
+| `backend/internal/telemetry/upstash.go` | ⏳ Pending | Upstash Redis backing for multi-instance telemetry (single Koyeb instance makes this optional for now). |
 | `backend/internal/r2/presigner.go` | ⏳ Pending | Cloudflare R2 S3 presigned URL generation for field photos. |
 | `backend/internal/mpesa/daraja.go` | ⏳ Pending | Safaricom M-Pesa STK push and webhook processor. |
 | `backend/internal/paystack/client.go` | ⏳ Pending | Paystack checkout session and card payment webhook processor. |
-| `backend/Dockerfile` | ⏳ Pending | Multi-stage Dockerfile for Koyeb deployment. |
+| `backend/Dockerfile` | ✅ Complete | Multi-stage golang:1.25-alpine → scratch (~15 MB static binary); root `.dockerignore` added. |
 | **CI/CD (`.gitlab-ci.yml`)** | ⏳ Pending | Pipeline for automated backend tests, container build, and Koyeb deployment. |
 | **Mobile App (`mobile/`)** | ⏳ Pending | Flutter setup (`pubspec.yaml`), Drift SQLite schema, `sensors_plus` compass dial, MapLibre GL offline vector map. |
 | **Web Portal (`web/`)** | ⏳ Pending | Next.js App Router setup, Carto Dark Matter MapLibre canvas, live telemetry dashboard, payment UI. |

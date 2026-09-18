@@ -1,0 +1,13 @@
+# Keeps the Docker build context tiny: only backend/ reaches the builder
+# (the Dockerfile copies backend/go.mod, backend/go.sum and backend/).
+# Without this file, docker would ship mobile/, web/, desktop/ and .git/
+# to the daemon on every build — slow locally, slower on CI.
+.git
+.gitlab-ci.yml
+GEOQUERRY_SYSTEM_DESIGN.md
+PROJECT_PLAN.md
+README.md
+mobile
+web
+desktop
+proto

@@ -1,0 +1,33 @@
+# =============================================================================
+# Dev-only infrastructure: a local PostGIS that matches the production spec
+# (Neon runs PostgreSQL 16 + PostGIS 3.4).
+#
+#   start:          docker compose up -d
+#   wait healthy:   docker compose ps        (status -> "healthy")
+#   stop:           docker compose down
+#   stop + wipe:    docker compose down -v   (drops ALL local data)
+#
+# The Go server applies schema migrations itself on boot, so this file only
+# needs to provide the database — no init scripts, no sidecars.
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: geoquerry-db
+    environment:
+      POSTGRES_DB: geoquerry
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: dev # local dev only — never use in production
+    ports:
+      - "5432:5432"
+    volumes:
+      - geoquerry-db-data:/var/lib/postgresql/data
+    # Health check so scripts (and you) can wait for first-boot init,
+    # which is when the image creates the cluster and enables PostGIS.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d geoquerry"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  geoquerry-db-data:

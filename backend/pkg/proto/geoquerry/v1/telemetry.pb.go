@@ -21,11 +21,14 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// One GPS breadcrumb sent from a field device. The mobile client opens a
+// single bidi stream and keeps pushing these points while the geologist is
+// traversing; the server answers with TeamMemberLocation snapshots.
 type StreamLiveTelemetryRequest struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	UserId            string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	UserName          string                 `protobuf:"bytes,2,opt,name=user_name,json=userName,proto3" json:"user_name,omitempty"`
-	ProjectId         int64                  `protobuf:"varint,3,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	ProjectId         string                 `protobuf:"bytes,3,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	Latitude          float64                `protobuf:"fixed64,4,opt,name=latitude,proto3" json:"latitude,omitempty"`
 	Longitude         float64                `protobuf:"fixed64,5,opt,name=longitude,proto3" json:"longitude,omitempty"`
 	Elevation         float64                `protobuf:"fixed64,6,opt,name=elevation,proto3" json:"elevation,omitempty"`
@@ -82,11 +85,11 @@ func (x *StreamLiveTelemetryRequest) GetUserName() string {
 	return ""
 }
 
-func (x *StreamLiveTelemetryRequest) GetProjectId() int64 {
+func (x *StreamLiveTelemetryRequest) GetProjectId() string {
 	if x != nil {
 		return x.ProjectId
 	}
-	return 0
+	return ""
 }
 
 func (x *StreamLiveTelemetryRequest) GetLatitude() float64 {
@@ -253,9 +256,12 @@ func (x *TeamMemberLocation) GetIsActive() bool {
 	return false
 }
 
+// A full snapshot of everyone currently active on the same project. Sent to
+// every connected stream whenever any member moves, so the web portal map
+// stays live without polling.
 type StreamLiveTelemetryResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProjectId     int64                  `protobuf:"varint,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	Members       []*TeamMemberLocation  `protobuf:"bytes,2,rep,name=members,proto3" json:"members,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -291,11 +297,11 @@ func (*StreamLiveTelemetryResponse) Descriptor() ([]byte, []int) {
 	return file_geoquerry_v1_telemetry_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *StreamLiveTelemetryResponse) GetProjectId() int64 {
+func (x *StreamLiveTelemetryResponse) GetProjectId() string {
 	if x != nil {
 		return x.ProjectId
 	}
-	return 0
+	return ""
 }
 
 func (x *StreamLiveTelemetryResponse) GetMembers() []*TeamMemberLocation {
@@ -314,7 +320,7 @@ const file_geoquerry_v1_telemetry_proto_rawDesc = "" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1b\n" +
 	"\tuser_name\x18\x02 \x01(\tR\buserName\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x03 \x01(\x03R\tprojectId\x12\x1a\n" +
+	"project_id\x18\x03 \x01(\tR\tprojectId\x12\x1a\n" +
 	"\blatitude\x18\x04 \x01(\x01R\blatitude\x12\x1c\n" +
 	"\tlongitude\x18\x05 \x01(\x01R\tlongitude\x12\x1c\n" +
 	"\televation\x18\x06 \x01(\x01R\televation\x12!\n" +
@@ -338,7 +344,7 @@ const file_geoquerry_v1_telemetry_proto_rawDesc = "" +
 	"\tis_active\x18\t \x01(\bR\bisActive\"x\n" +
 	"\x1bStreamLiveTelemetryResponse\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\x03R\tprojectId\x12:\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12:\n" +
 	"\amembers\x18\x02 \x03(\v2 .geoquerry.v1.TeamMemberLocationR\amembersBLZJgitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerry/v1;geoquerryv1b\x06proto3"
 
 var (

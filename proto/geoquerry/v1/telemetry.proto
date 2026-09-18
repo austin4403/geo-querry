@@ -4,10 +4,13 @@ package geoquerry.v1;
 
 option go_package = "gitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerry/v1;geoquerryv1";
 
+// One GPS breadcrumb sent from a field device. The mobile client opens a
+// single bidi stream and keeps pushing these points while the geologist is
+// traversing; the server answers with TeamMemberLocation snapshots.
 message StreamLiveTelemetryRequest {
   string user_id = 1;
   string user_name = 2;
-  int64 project_id = 3;
+  string project_id = 3;
   double latitude = 4;
   double longitude = 5;
   double elevation = 6;
@@ -30,7 +33,10 @@ message TeamMemberLocation {
   bool is_active = 9;
 }
 
+// A full snapshot of everyone currently active on the same project. Sent to
+// every connected stream whenever any member moves, so the web portal map
+// stays live without polling.
 message StreamLiveTelemetryResponse {
-  int64 project_id = 1;
+  string project_id = 1;
   repeated TeamMemberLocation members = 2;
 }
