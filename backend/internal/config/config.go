@@ -16,6 +16,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -54,6 +55,20 @@ type Config struct {
 	// live map) and eventually forgets them entirely.
 	TelemetryMemberTTL time.Duration
 
+	// APIKeys enables the shared-key auth gate on all Connect RPCs when
+	// non-empty (env: GEOQUERRY_API_KEYS, comma-separated). Empty = gate
+	// disabled, which is ONLY acceptable for local development — see
+	// SECURITY.md for the roadmap to per-user auth.
+	APIKeys []string
+
+	// MaxBodyBytes caps request body size on the UNARY sync RPCs (env:
+	// MAX_BODY_BYTES). A hostile or buggy client pushing an enormous batch
+	// must not be able to balloon the 512 MB Koyeb container's memory; a
+	// full day of field work fits comfortably in a few MB of protobuf.
+	// The telemetry STREAM is exempt — its body legitimately accumulates
+	// for hours (see withBodyLimit in main.go).
+	MaxBodyBytes int64
+
 	// ShutdownTimeout is how long in-flight requests get to finish after
 	// SIGTERM before we drop them. Koyeb sends SIGTERM before killing the
 	// container; 10s is a safe window for a final sync batch to land.
@@ -67,10 +82,27 @@ func Load() (Config, error) {
 	cfg := Config{
 		Port:               envOr("PORT", "8080"),
 		DatabaseURL:        os.Getenv("DATABASE_URL"),
-		DBMaxConns:         int32(envIntOr("DB_MAX_CONNS", 4)),
-		DBMinConns:         int32(envIntOr("DB_MIN_CONNS", 1)),
 		TelemetryMemberTTL: envDurationOr("TELEMETRY_MEMBER_TTL", 60*time.Second),
+		MaxBodyBytes:       envInt64Or("MAX_BODY_BYTES", 4*1024*1024),
 		ShutdownTimeout:    envDurationOr("SHUTDOWN_TIMEOUT", 10*time.Second),
+	}
+
+	// Pool sizing parses as int64 and is RANGE-VALIDATED before the int32
+	// conversion — a fat-fingered env var (DB_MAX_CONNS=99999999999) must
+	// fail boot with a clear error, not silently wrap to a garbage count
+	// (gosec G115). Neon's ceiling and ours: a free-tier-friendly 1..64.
+	cfg.DBMaxConns = int32(envIntInRange("DB_MAX_CONNS", 4, 1, 64))
+	cfg.DBMinConns = int32(envIntInRange("DB_MIN_CONNS", 1, 0, 64))
+
+	// Auth keys: comma-separated so platform env UIs (Koyeb, GitLab CI
+	// variables) don't need quoting tricks. Generate a strong one with:
+	//   openssl rand -base64 32
+	if raw := os.Getenv("GEOQUERRY_API_KEYS"); raw != "" {
+		for _, k := range strings.Split(raw, ",") {
+			if k = strings.TrimSpace(k); k != "" {
+				cfg.APIKeys = append(cfg.APIKeys, k)
+			}
+		}
 	}
 
 	// CORS origins are passed as a comma-separated list because many
@@ -108,14 +140,29 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-// envIntOr parses an integer env var, falling back when unset or malformed.
-func envIntOr(key string, fallback int) int {
+// envInt64Or parses an int64 env var, falling back when unset/malformed.
+func envInt64Or(key string, fallback int64) int64 {
 	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
 			return n
 		}
 	}
 	return fallback
+}
+
+// envIntInRange parses an int env var and HARD-FAILS boot when the value
+// is malformed or outside [min, max] — misconfiguration should stop the
+// process, not degrade it silently.
+func envIntInRange(key string, fallback, min, max int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < min || n > max {
+		log.Fatalf("config: %s must be an integer in [%d, %d], got %q", key, min, max, v)
+	}
+	return n
 }
 
 // envDurationOr parses a duration env var (e.g. "90s", "2m"), falling back

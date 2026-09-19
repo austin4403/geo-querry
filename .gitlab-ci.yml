@@ -1,0 +1,76 @@
+# =============================================================================
+# GeoQuerry CI/CD — test, scan, build, deploy
+# =============================================================================
+# Security gates mirror SECURITY.md: govulncheck fails on reachable CVEs,
+# gosec fails on new findings in hand-written code. A regression is caught
+# at merge time, not in production.
+
+stages:
+  - test
+  - security
+  - build
+  - deploy
+
+variables:
+  GO_IMAGE: golang:1.25-alpine # must match go.mod's toolchain (pgx v5.11 requires 1.25)
+  DOCKER_IMAGE: $CI_REGISTRY_IMAGE/api:$CI_COMMIT_SHORT_SHA
+
+# --- Test -------------------------------------------------------------------
+test_backend:
+  stage: test
+  image: $GO_IMAGE
+  script:
+    - cd backend
+    - go vet ./...
+    - go test -race -count=1 ./...
+
+# --- Security ----------------------------------------------------------------
+# govulncheck: official Go vulnerability database, CALL-GRAPH aware — it
+# only fails when a known CVE is actually reachable from our code, so a
+# transitive dependency with an irrelevant advisory doesn't block the pipe.
+govulncheck:
+  stage: security
+  image: $GO_IMAGE
+  script:
+    - cd backend
+    - go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+  allow_failure: false
+
+# gosec: static security analysis (CWE rules). pkg/proto is GENERATED code
+# (protobuf codegen's standard unsafe usage) — excluded, see SECURITY.md §6.8.
+gosec:
+  stage: security
+  image: $GO_IMAGE
+  script:
+    - cd backend
+    - go run github.com/securego/gosec/v2/cmd/gosec@latest -quiet -exclude-dir=pkg/proto ./...
+
+# --- Build -------------------------------------------------------------------
+# Multi-stage Dockerfile -> scratch image (~15 MB). Build context is the
+# repo root because the Dockerfile lives in backend/ but copies backend/.
+build_docker:
+  stage: build
+  image: docker:27
+  services:
+    - docker:27-dind
+  script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    - docker build -t "$DOCKER_IMAGE" -f backend/Dockerfile .
+    - docker push "$DOCKER_IMAGE"
+  only:
+    - main
+
+# --- Deploy ------------------------------------------------------------------
+# Koyeb redeploys the service with the freshly pushed image. The API key
+# and database URL live in Koyeb's env config (see SECURITY.md §7).
+deploy_koyeb:
+  stage: deploy
+  image: curlimages/curl:latest
+  script:
+    - >
+      curl -sf -X POST "https://app.koyeb.com/v1/deployments"
+      -H "Authorization: Bearer $KOYEB_API_TOKEN"
+      -H "Content-Type: application/json"
+      -d "{\"service\":\"$KOYEB_SERVICE_ID\",\"image\":\"$DOCKER_IMAGE\"}"
+  only:
+    - main

@@ -227,10 +227,17 @@ geo-querry/
 | `backend/internal/telemetry/hub.go` | ✅ Complete | In-memory pub/sub: per-project snapshots, two-stage TTL expiry (grey-out → forget), slow-subscriber drop. Unit-tested. |
 | `backend/internal/telemetry/service.go` | ✅ Complete | StreamLiveTelemetry bidi handler (goroutine-multiplexed receive loop, leak-free). |
 | `backend/internal/telemetry/upstash.go` | ⏳ Pending | Upstash Redis backing for multi-instance telemetry (single Koyeb instance makes this optional for now). |
+| `backend/internal/auth/interceptor.go` | ✅ Complete | API-key gate on all RPCs (incl. streaming): SHA-256 + constant-time compare, disabled when env unset, unit-tested. v1 compromise — see SECURITY.md §6. |
+| `backend/cmd/seed/main.go` | ✅ Complete | Dev utility: idempotently seeds a demo project + concession (no CreateProject RPC yet). |
+| `backend/cmd/bench-telemetry/main.go` | ✅ Complete | Simulated field team over the bidi stream (h2c client) — verifies fan-out end to end. |
 | `backend/internal/r2/presigner.go` | ⏳ Pending | Cloudflare R2 S3 presigned URL generation for field photos. |
 | `backend/internal/mpesa/daraja.go` | ⏳ Pending | Safaricom M-Pesa STK push and webhook processor. |
 | `backend/internal/paystack/client.go` | ⏳ Pending | Paystack checkout session and card payment webhook processor. |
-| `backend/Dockerfile` | ✅ Complete | Multi-stage golang:1.25-alpine → scratch (~15 MB static binary); root `.dockerignore` added. |
+| `backend/Dockerfile` | ✅ Complete | Multi-stage golang:1.25-alpine → scratch, non-root UID 65532, CA certs + tzdata baked in; root `.dockerignore` added. |
+| **Security & CI** | | |
+| [SECURITY.md](file:///home/austin/Projects/geo-querry/SECURITY.md) | ✅ Complete | Full audit: govulncheck 0 reachable CVEs, gosec 0 (hand-written), threat model, known gaps roadmap, deployment checklist. |
+| [.gitlab-ci.yml](file:///home/austin/Projects/geo-querry/.gitlab-ci.yml) | ✅ Complete | Stages: test (+ `-race`), govulncheck + gosec gates, Docker build, Koyeb deploy. |
+| `docker-compose.yml` | ✅ Complete | Local PostGIS 16/3.4 dev database with healthcheck. |
 | **CI/CD (`.gitlab-ci.yml`)** | ⏳ Pending | Pipeline for automated backend tests, container build, and Koyeb deployment. |
 | **Mobile App (`mobile/`)** | ⏳ Pending | Flutter setup (`pubspec.yaml`), Drift SQLite schema, `sensors_plus` compass dial, MapLibre GL offline vector map. |
 | **Web Portal (`web/`)** | ⏳ Pending | Next.js App Router setup, Carto Dark Matter MapLibre canvas, live telemetry dashboard, payment UI. |

@@ -34,7 +34,8 @@ RUN go mod download
 COPY backend/ .
 
 # CGO_ENABLED=0 -> pure-Go binary, no glibc dependency, runs on scratch.
-# -trimmat & -ldflags "-s -w" strip debug tables for a smaller image.
+# -trimpath & -ldflags "-s -w" strip paths and debug tables for a smaller,
+# less information-leaking image.
 RUN CGO_ENABLED=0 GOOS=linux \
     go build -trimpath -ldflags="-s -w" \
     -o /out/geoquerry-server ./cmd/server
@@ -42,11 +43,21 @@ RUN CGO_ENABLED=0 GOOS=linux \
 # --- Stage 2: runtime --------------------------------------------------------
 FROM scratch
 
-# The binary embeds its own TLS-verification path only for outbound calls;
-# inbound TLS terminates at Koyeb's edge, so no CA bundle is required. If a
-# future feature calls HTTPS APIs (M-Pesa, Paystack), copy /etc/ssl/certs
-# from the builder here.
+# CA certificates are REQUIRED in production: Neon Postgres refuses
+# non-TLS connections, and the future M-Pesa / Paystack / R2 integrations
+# all call HTTPS endpoints. A scratch image without this copy fails every
+# outbound TLS handshake with "x509: certificate signed by unknown
+# authority" — a classic scratch-image footgun.
+# (Timezone data needs no copy: the binary embeds it via time/tzdata.)
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
 COPY --from=builder /out/geoquerry-server /geoquerry-server
+
+# Run as an unprivileged user. scratch has no /etc/passwd, so this is the
+# raw numeric UID/GID (65532 = the "nobody" convention used by distroless).
+# If the container is ever compromised, the attacker lands as UID 65532:
+# no root, no group privileges, nothing to escalate within the container.
+USER 65532:65532
 
 # Koyeb injects PORT; we document the default for local docker runs.
 ENV PORT=8080

@@ -21,6 +21,16 @@ import (
 	"syscall"
 	"time"
 
+	// Embed the IANA timezone database into the binary. The runtime image
+	// is `scratch` (no /usr/share/zoneinfo on disk); without this import
+	// any time.LoadLocation("Africa/Nairobi") call would fail at runtime
+	// instead of at build time. Costs ~450 KB in the binary, removes a
+	// whole class of missing-file-on-scratch bugs.
+	_ "time/tzdata"
+
+	"connectrpc.com/connect"
+
+	"gitlab.com/austin4403/geoquerry/backend/internal/auth"
 	"gitlab.com/austin4403/geoquerry/backend/internal/config"
 	"gitlab.com/austin4403/geoquerry/backend/internal/db"
 	"gitlab.com/austin4403/geoquerry/backend/internal/sync"
@@ -87,7 +97,16 @@ func run() error {
 	mux := http.NewServeMux()
 	// Connect mounts the whole service under one prefix and serves all
 	// three protocols (Connect, gRPC, gRPC-Web) with proto + JSON codecs.
-	servicePath, serviceHandler := geoquerryv1connect.NewGeoquerrySyncServiceHandler(api)
+	// When GEOQUERRY_API_KEYS is set, the auth interceptor gates every RPC
+	// (unary AND streaming) behind a valid X-Geoquerry-Api-Key header —
+	// see internal/auth for the threat model. With it unset (local dev)
+	// the interceptor is nil and no gate applies.
+	var handlerOpts []connect.HandlerOption
+	if ic := auth.NewAPIKeyInterceptor(cfg.APIKeys); ic != nil {
+		handlerOpts = append(handlerOpts, connect.WithInterceptors(ic))
+		log.Printf("server: API-key auth ENABLED (%d key(s))", len(cfg.APIKeys))
+	}
+	servicePath, serviceHandler := geoquerryv1connect.NewGeoquerrySyncServiceHandler(api, handlerOpts...)
 	mux.Handle(servicePath, serviceHandler)
 
 	// Liveness: "is the process alive" — used by Koyeb's health checks.
@@ -112,12 +131,24 @@ func run() error {
 		_, _ = w.Write([]byte("ready"))
 	})
 
-	// Middleware stack, outermost first: logging sees the CORS-decorated
-	// response; CORS wraps routing.
+	// Protocol configuration: HTTP/1.1 for curl/health checks, plus
+	// UNENCRYPTED HTTP/2 (h2c) which the Connect bidi telemetry stream
+	// REQUIRES — bidi cannot run over HTTP/1.1. Go 1.24+ serves h2c
+	// natively via the Protocols field (the old golang.org/x/net/h2c
+	// wrapper is deprecated); no extra dependency needed.
+	var protocols http.Protocols
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+
+	// Middleware stack, outermost first: logging, then the request body
+	// cap, then CORS, then routing.
 	srv := &http.Server{
-		Addr: ":" + cfg.Port,
+		Addr:      ":" + cfg.Port,
+		Protocols: &protocols,
 		Handler: withLogging(
-			withCORS(cfg.AllowedOrigins, mux),
+			withBodyLimit(cfg.MaxBodyBytes,
+				withCORS(cfg.AllowedOrigins, mux),
+			),
 		),
 
 		// STREAMING-SAFE TIMEOUTS — do not "fix" these to Read/WriteTimeout!
@@ -179,9 +210,26 @@ func withLogging(next http.Handler) http.Handler {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
-		log.Printf("http: %s %s -> %d (%d bytes, %s)",
-			r.Method, r.URL.Path, rec.status, rec.bytes, time.Since(start).Round(time.Millisecond))
+		log.Printf("http: %s %q -> %d (%d bytes, %s)",
+			r.Method, sanitizeLogField(r.URL.Path), rec.status, rec.bytes,
+			time.Since(start).Round(time.Millisecond))
 	})
+}
+
+// sanitizeLogField neutralizes log injection (gosec G706): a request path
+// is attacker-controlled, and a raw newline in it could forge additional
+// log lines that an operator (or a log-based alert) would trust. %q would
+// already escape newlines, but defense in depth: strip control characters
+// outright so even exotic encodings cannot smuggle line breaks.
+func sanitizeLogField(s string) string {
+	clean := make([]rune, 0, len(s))
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			r = '?' // replace control chars instead of deleting: keep length
+		}
+		clean = append(clean, r)
+	}
+	return string(clean)
 }
 
 // statusRecorder captures what the inner handler wrote so the logging
@@ -203,6 +251,55 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 	return n, err
 }
 
+// Flush passes through to the underlying writer when it supports flushing.
+// CRITICAL for Connect streaming: the bidi telemetry stream (and SSE-style
+// responses) requires the handler to flush chunks as they are produced.
+// Without this passthrough, the type assertion http.Flusher(w) inside
+// connect fails and streaming handlers error out immediately — the exact
+// symptom is a stream that returns in milliseconds with no data.
+func (r *statusRecorder) Flush() {
+	if f, ok := r.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// Unwrap lets http.ResponseController (and anything walking the wrapper
+// chain) reach the ORIGINAL ResponseWriter, preserving every optional
+// interface the server stack provides (CloseNotifier, Hijacker, ...).
+func (r *statusRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
+
+// withBodyLimit caps request body size to protect the 512 MB container.
+//
+// WHY THE TELEMETRY STREAM IS EXEMPT (this is subtle):
+// MaxBytesReader counts TOTAL bytes read over the request's whole lifetime.
+// A bidi telemetry stream is ONE request whose body legitimately accumulates
+// for hours (a breadcrumb every few seconds), so a blanket cap would kill
+// every field session after a few hundred KB. The unary sync RPCs, by
+// contrast, receive one bounded batch — capping those bounds attacker memory
+// cost per request. We exempt the streaming procedure by its exact route.
+func withBodyLimit(maxBytes int64, next http.Handler) http.Handler {
+	streamProcedure := geoquerryv1connect.GeoquerrySyncServiceStreamLiveTelemetryProcedure
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == streamProcedure {
+			next.ServeHTTP(w, r) // long-lived stream: see comment above
+			return
+		}
+		// Cheap preflight: reject declared-oversize bodies before reading
+		// a single byte of them.
+		if r.ContentLength > maxBytes {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		// Definite cap for lying/chunked clients: the read itself fails
+		// once maxBytes is exceeded.
+		r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+		next.ServeHTTP(w, r)
+	})
+}
+
 // withCORS makes the API callable from the web portal, which is served from
 // a DIFFERENT origin (Cloudflare Pages) than the API (Koyeb). Browsers
 // refuse cross-origin requests without these headers; the Flutter app and
@@ -219,8 +316,10 @@ func withCORS(allowedOrigins []string, next http.Handler) http.Handler {
 	allowAll := func() bool { return wildcard }
 
 	// Headers the Connect / gRPC-Web browser clients actually send.
+	// auth.APIKeyHeader is referenced (not re-typed) so a rename in one
+	// place can never desynchronise CORS from the auth check.
 	allowHeaders := "Content-Type, Connect-Protocol-Version, Connect-Timeout-Ms, " +
-		"Connect-Content-Encoding, Authorization, X-Geoquerry-Api-Key"
+		"Connect-Content-Encoding, Authorization, " + auth.APIKeyHeader
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
