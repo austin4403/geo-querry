@@ -91,8 +91,10 @@ func Load() (Config, error) {
 	// conversion — a fat-fingered env var (DB_MAX_CONNS=99999999999) must
 	// fail boot with a clear error, not silently wrap to a garbage count
 	// (gosec G115). Neon's ceiling and ours: a free-tier-friendly 1..64.
-	cfg.DBMaxConns = int32(envIntInRange("DB_MAX_CONNS", 4, 1, 64))
-	cfg.DBMinConns = int32(envIntInRange("DB_MIN_CONNS", 1, 0, 64))
+	// gosec cannot dataflow-track the range check inside envIntInRange,
+	// hence the audited inline suppressions:
+	cfg.DBMaxConns = int32(envIntInRange("DB_MAX_CONNS", 4, 1, 64)) // #nosec G115 -- value range-validated [1..64] by envIntInRange
+	cfg.DBMinConns = int32(envIntInRange("DB_MIN_CONNS", 1, 0, 64)) // #nosec G115 -- value range-validated [0..64] by envIntInRange
 
 	// Auth keys: comma-separated so platform env UIs (Koyeb, GitLab CI
 	// variables) don't need quoting tricks. Generate a strong one with:
@@ -160,7 +162,9 @@ func envIntInRange(key string, fallback, min, max int) int {
 	}
 	n, err := strconv.Atoi(v)
 	if err != nil || n < min || n > max {
-		log.Fatalf("config: %s must be an integer in [%d, %d], got %q", key, min, max, v)
+		// %q already escapes control characters, so an env var containing
+		// newlines cannot forge log lines (gosec G706 can't see that).
+		log.Fatalf("config: %s must be an integer in [%d, %d], got %q", key, min, max, v) // #nosec G706 -- value rendered via %q (control chars escaped)
 	}
 	return n
 }

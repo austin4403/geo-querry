@@ -11,12 +11,23 @@
 | Tool | What it checks | Result |
 | :--- | :--- | :--- |
 | `govulncheck` (official Go vuln DB) | Known CVEs **reachable from our call graph** | ✅ **0 reachable** (was 3 — fixed, see §2) |
-| `gosec` (securego) | 40+ CWE classes: hardcoded creds, overflow, log injection, weak crypto… | ✅ **0 findings** on hand-written code* |
+| `gosec` (securego) | 40+ CWE classes: hardcoded creds, overflow, log injection, weak crypto… | ✅ **0 open findings** — 5 suppressions, each with an inline justification (below) |
 | `staticcheck` | Correctness, deprecated APIs, perf traps | ✅ **0 findings** |
 | `go vet` + `gofmt` | Standard Go diagnostics | ✅ clean |
-| Unit tests (`go test ./...`) | LWW logic, auth gate, hub behavior, config | ✅ 4 packages, all green |
+| Unit tests (`go test -race ./...`) | LWW logic, auth gate, hub behavior, config + **data-race detection** | ✅ 4 packages, all green |
 
-\* `backend/pkg/proto/**` (generated protobuf codegen) is excluded from gosec: it reports 14 `G103` (unsafe pointer use) findings that originate in **google.golang.org/protobuf's code generator**, are standard across every protobuf Go project, and are not maintainable from this repo. Tracked as an accepted risk in §6.8.
+### Suppression policy
+
+`#nosec` is used surgically — only where the risk is already mitigated and gosec's dataflow cannot see it — and every suppression carries an inline justification. The gosec summary reports `Nosec: 5`, so suppressed sites cannot accumulate silently. Current suppressions:
+
+| Site | Rule | Why it is safe (and suppressed) |
+| :--- | :--- | :--- |
+| `internal/config/config.go` ×2 | G115 (int→int32 overflow) | value comes from `envIntInRange`, which hard-fails boot outside `[0..64]` — gosec cannot track the helper's range check |
+| `internal/auth/interceptor.go` | G101 (hardcoded credentials) | the constant is an HTTP header **name** (`X-Geoquerry-Api-Key`), not a credential; real keys live in env vars |
+| `internal/config/config.go` | G706 (log injection) | env value rendered via `%q`, which escapes control characters |
+| `cmd/server/main.go` | G706 (log injection) | request path passes through `sanitizeLogField` (strips all control chars) **and** `%q` |
+
+`backend/pkg/proto/**` (generated protobuf codegen) is additionally excluded from gosec: it reports 14 `G103` (unsafe pointer use) findings that originate in **google.golang.org/protobuf's code generator**, are standard across every protobuf Go project, and are not maintainable from this repo. Tracked as an accepted risk in §6.8.
 
 ## 2. Vulnerabilities Found & Fixed During This Audit
 

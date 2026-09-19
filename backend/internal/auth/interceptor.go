@@ -30,7 +30,10 @@ import (
 // APIKeyHeader is the HTTP header clients present the key in. It is listed
 // in the CORS allow-headers of cmd/server/main.go — if you rename it here,
 // rename it there too or browser clients will fail preflight.
-const APIKeyHeader = "X-Geoquerry-Api-Key"
+//
+// The literal is a header NAME, not a credential — gosec G101 pattern-matches
+// "Key" in constant names and can't tell the difference.
+const APIKeyHeader = "X-Geoquerry-Api-Key" // #nosec G101 -- header name, not a secret
 
 // interceptor rejects any RPC whose caller cannot present a valid key.
 type interceptor struct {

@@ -24,6 +24,12 @@ variables:
   # alpine image does not ship — "go: -race requires cgo" failure. The
   # debian golang image has gcc and CGO enabled by default.
   GO_TEST_IMAGE: golang:1.25
+  # Official golang Docker images set GOTOOLCHAIN=local, which makes
+  # `go run pkg@latest` FAIL when the latest release needs a newer Go
+  # (observed: govulncheck v1.8.0 requires go 1.26). "auto" lets the go
+  # command fetch the toolchain the tool declares — the same behavior as
+  # a local dev machine.
+  GOTOOLCHAIN: auto
   DOCKER_IMAGE: $CI_REGISTRY_IMAGE/api:$CI_COMMIT_SHORT_SHA
 
 # --- Test -------------------------------------------------------------------

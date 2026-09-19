@@ -210,7 +210,10 @@ func withLogging(next http.Handler) http.Handler {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
-		log.Printf("http: %s %q -> %d (%d bytes, %s)",
+		// Path is sanitized (control chars stripped) and %q-quoted, so a
+		// crafted URL cannot forge log lines — gosec G706 can't recognize
+		// sanitizeLogField as a sanitizer, hence the audited suppression.
+		log.Printf("http: %s %q -> %d (%d bytes, %s)", // #nosec G706 -- path sanitized via sanitizeLogField + %q escaping
 			r.Method, sanitizeLogField(r.URL.Path), rec.status, rec.bytes,
 			time.Since(start).Round(time.Millisecond))
 	})
