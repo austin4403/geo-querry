@@ -5,6 +5,12 @@
 # gosec fails on new findings in hand-written code. A regression is caught
 # at merge time, not in production.
 
+# GitLab's built-in SAST (semgrep) + secret detection run alongside our own
+# scanners — defense in depth, zero config.
+include:
+  - template: Security/SAST.gitlab-ci.yml
+  - template: Security/Secret-Detection.gitlab-ci.yml
+
 stages:
   - test
   - security
@@ -12,13 +18,18 @@ stages:
   - deploy
 
 variables:
+  # Alpine for cgo-free jobs (vet, scanners): small and fast.
   GO_IMAGE: golang:1.25-alpine # must match go.mod's toolchain (pgx v5.11 requires 1.25)
+  # Debian for the test job: -race REQUIRES cgo (a C compiler), which the
+  # alpine image does not ship — "go: -race requires cgo" failure. The
+  # debian golang image has gcc and CGO enabled by default.
+  GO_TEST_IMAGE: golang:1.25
   DOCKER_IMAGE: $CI_REGISTRY_IMAGE/api:$CI_COMMIT_SHORT_SHA
 
 # --- Test -------------------------------------------------------------------
 test_backend:
   stage: test
-  image: $GO_IMAGE
+  image: $GO_TEST_IMAGE
   script:
     - cd backend
     - go vet ./...
