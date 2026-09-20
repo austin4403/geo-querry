@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS gis_datasets CASCADE;

@@ -1,18 +1,4 @@
 // main boots the GeoQuerry sync and live-telemetry microservice.
-//
-// LIFECYCLE (every step is explicit so boot failures are easy to diagnose):
-//  1. Read configuration from environment.
-//  2. Connect to the Neon PostGIS database and verify connectivity.
-//  3. Apply pending SQL migrations (000001_init.sql, etc.).
-//  4. Construct domain services:
-//     - sync.Service (PostGIS read/write for offline sync batches)
-//     - telemetry.Hub (in-memory lockless fan-out of live GPS breadcrumbs)
-//     - r2.UploadService (presigned PUT URLs for field photo uploads)
-//     - auth.Service (Ed25519 assertion exchange, sudo verification)
-//     - tenant.Service (Organizations, memberships, and project management)
-//  5. Mount Connect RPC handlers + payment webhooks on an http.ServeMux.
-//  6. Start HTTP/1.1 + h2c server and block until SIGINT/SIGTERM.
-//  7. Drain in-flight RPCs within a 15-second grace window, then exit 0.
 package main
 
 import (
@@ -27,12 +13,17 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/jackc/pgx/v5"
+	"github.com/riverqueue/river"
 
 	"gitlab.com/austin4403/geoquerry/backend/internal/auth"
+	"gitlab.com/austin4403/geoquerry/backend/internal/billing"
 	"gitlab.com/austin4403/geoquerry/backend/internal/config"
 	"gitlab.com/austin4403/geoquerry/backend/internal/db"
+	"gitlab.com/austin4403/geoquerry/backend/internal/gis"
 	"gitlab.com/austin4403/geoquerry/backend/internal/mpesa"
 	"gitlab.com/austin4403/geoquerry/backend/internal/paystack"
+	"gitlab.com/austin4403/geoquerry/backend/internal/queue"
 	"gitlab.com/austin4403/geoquerry/backend/internal/r2"
 	"gitlab.com/austin4403/geoquerry/backend/internal/sync"
 	"gitlab.com/austin4403/geoquerry/backend/internal/telemetry"
@@ -40,17 +31,12 @@ import (
 	geoquerryv1connect "gitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerry/v1/geoquerryv1connect"
 )
 
-// geoquerryAPI composes the half-services into the ONE handler type the
-// generated connect code expects. Each embedded type implements exactly
-// its own RPCs: *sync.Service (PushSyncQueue + PullProjectData),
-// *telemetry.Handler (StreamLiveTelemetry), *r2.UploadService (CreatePhotoUpload).
 type geoquerryAPI struct {
 	*sync.Service
 	*telemetry.Handler
 	*r2.UploadService
 }
 
-// Compile-time proof the composition satisfies the full handler interface.
 var _ geoquerryv1connect.GeoquerrySyncServiceHandler = (*geoquerryAPI)(nil)
 
 func main() {
@@ -81,29 +67,40 @@ func run() error {
 		return err
 	}
 
-	// --- 4) Handlers --------------------------------------------------------
-	// Telemetry TTL: after this much radio silence a geologist greys out on
-	// the live map; the reaper runs at ~1/4 TTL so the transition is prompt.
+	// --- 4) River Queue Engine ----------------------------------------------
+	var riverClient *river.Client[pgx.Tx]
+	if pool != nil {
+		rClient, qErr := queue.NewQueueEngine(ctx, pool)
+		if qErr != nil {
+			log.Printf("server: warning: river engine disabled: %v", qErr)
+		} else {
+			riverClient = rClient
+			log.Printf("server: River durable queue engine active")
+		}
+	}
+
+	// --- 5) Handlers --------------------------------------------------------
 	hub := telemetry.NewHub(cfg.TelemetryMemberTTL, cfg.TelemetryMemberTTL/4)
 	defer hub.Close()
 
-	// Photo uploads: the UploadService is always embedded; with R2 unset
-	// it is nil-safe and answers CodeUnimplemented, so deployments without
-	// object storage degrade gracefully instead of erroring.
 	r2Ready := cfg.R2AccountID != "" && cfg.R2AccessKeyID != "" &&
 		cfg.R2SecretAccessKey != "" && cfg.R2Bucket != ""
 	var uploads *r2.UploadService
+	var presigner *r2.Presigner
 	if r2Ready {
-		uploads = r2.NewService(r2.NewPresigner(cfg))
+		presigner = r2.NewPresigner(cfg)
+		uploads = r2.NewService(presigner)
 		log.Printf("server: R2 photo uploads enabled (bucket %s, ttl %s)",
 			cfg.R2Bucket, cfg.PhotoPutTTL)
 	} else {
 		uploads = r2.NewService(nil)
 	}
 
+	telemetryHandler := telemetry.NewHandler(hub)
+
 	api := geoquerryAPI{
 		Service:       sync.NewService(pool),
-		Handler:       telemetry.NewHandler(hub),
+		Handler:       telemetryHandler,
 		UploadService: uploads,
 	}
 
@@ -127,6 +124,24 @@ func run() error {
 	tenantSvc := tenant.NewService(pool)
 	tenantPath, tenantHandler := geoquerryv1connect.NewTenantServiceHandler(tenantSvc, handlerOpts...)
 	mux.Handle(tenantPath, tenantHandler)
+
+	// Mount BillingService
+	var mpesaClient *mpesa.Client
+	if cfg.MPesaEnabled {
+		mpesaClient = mpesa.New(cfg.MPesaEnv, cfg.MPesaShortcode, cfg.MPesaPasskey, cfg.MPesaConsumerKey, cfg.MPesaConsumerSec, "")
+	}
+	billingSvc := billing.NewService(pool, mpesaClient)
+	billingPath, billingHandler := geoquerryv1connect.NewBillingServiceHandler(billingSvc, handlerOpts...)
+	mux.Handle(billingPath, billingHandler)
+
+	// Mount GisIngestionService
+	gisSvc := gis.NewService(pool, riverClient, presigner)
+	gisPath, gisHandler := geoquerryv1connect.NewGisIngestionServiceHandler(gisSvc, handlerOpts...)
+	mux.Handle(gisPath, gisHandler)
+
+	// Mount TelemetryService standalone
+	telemPath, telemHandler := geoquerryv1connect.NewTelemetryServiceHandler(telemetryHandler, handlerOpts...)
+	mux.Handle(telemPath, telemHandler)
 
 	// Liveness: "is the process alive"
 	mux.HandleFunc("GET /healthz", telemetry.HealthzHandler())
@@ -170,88 +185,87 @@ func run() error {
 		IdleTimeout:       60 * time.Second,
 	}
 
-	errCh := make(chan error, 1)
+	serverErr := make(chan error, 1)
 	go func() {
-		log.Printf("server: listening on :%s (http/1.1 + h2c)", cfg.Port)
+		log.Printf("server: listening on :%s (cors: %v)", cfg.Port, cfg.AllowedOrigins)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- err
+			serverErr <- err
 		}
 	}()
 
 	select {
 	case <-ctx.Done():
-		log.Printf("server: shutting down (waiting up to %s for in-flight RPCs)", cfg.ShutdownTimeout)
-	case err := <-errCh:
-		return fmt.Errorf("listen: %w", err)
+		log.Printf("server: shutdown signal received; draining...")
+	case err := <-serverErr:
+		return fmt.Errorf("server: %w", err)
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	drainCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("shutdown: %w", err)
+	if err := srv.Shutdown(drainCtx); err != nil {
+		return fmt.Errorf("server: drain: %w", err)
 	}
-	log.Printf("server: stopped cleanly")
+	log.Printf("server: drained cleanly")
 	return nil
 }
 
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		ww := &statusTrackingResponseWriter{ResponseWriter: w, status: http.StatusOK}
-		next.ServeHTTP(ww, r)
-		log.Printf("%s %s %s %d %s",
-			r.RemoteAddr,
-			r.Method,
-			r.URL.Path,
-			ww.status,
-			time.Since(start).Round(time.Millisecond),
-		)
+		rw := &statusResponseWriter{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rw, r)
+		log.Printf("%s %s -> %d (%s)", r.Method, r.URL.Path, rw.status, time.Since(start).Round(time.Millisecond))
 	})
 }
 
-type statusTrackingResponseWriter struct {
+type statusResponseWriter struct {
 	http.ResponseWriter
 	status int
 }
 
-func (w *statusTrackingResponseWriter) WriteHeader(status int) {
-	w.status = status
-	w.ResponseWriter.WriteHeader(status)
+func (s *statusResponseWriter) WriteHeader(status int) {
+	s.status = status
+	s.ResponseWriter.WriteHeader(status)
 }
 
-func withMaxBytes(next http.Handler, limit int64) http.Handler {
+func withMaxBytes(next http.Handler, maxBytes int64) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, limit)
+		if r.ContentLength > maxBytes {
+			http.Error(w, fmt.Sprintf("payload exceeds %d bytes", maxBytes), http.StatusRequestEntityTooLarge)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 		next.ServeHTTP(w, r)
 	})
 }
 
 func withCORS(allowedOrigins []string, next http.Handler) http.Handler {
-	allowed := make(map[string]struct{}, len(allowedOrigins))
-	for _, o := range allowedOrigins {
-		allowed[o] = struct{}{}
-	}
-
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		if origin != "" {
-			if _, ok := allowed[origin]; ok || len(allowed) == 0 {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Vary", "Origin")
-				w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-				w.Header().Set("Access-Control-Allow-Headers",
-					"Content-Type, Connect-Protocol-Version, Connect-Timeout-Ms, "+
-						auth.APIKeyHeader+", Authorization, X-Correlation-ID")
-				w.Header().Set("Access-Control-Expose-Headers",
-					"Connect-Protocol-Version, Connect-Content-Encoding, X-Correlation-ID")
+		var allowed bool
+		for _, o := range allowedOrigins {
+			if o == "*" || o == origin {
+				allowed = true
+				break
 			}
+		}
+
+		if allowed {
+			if origin != "" {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+			} else {
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			}
+			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Connect-Protocol-Version, Authorization, X-Geoquerry-Api-Key, Connect-Timeout-Ms, X-Correlation-ID")
+			w.Header().Set("Access-Control-Expose-Headers", "Connect-Protocol-Version, X-Correlation-ID")
+			w.Header().Set("Access-Control-Max-Age", "7200")
 		}
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-
 		next.ServeHTTP(w, r)
 	})
 }
