@@ -1,0 +1,34 @@
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+dist/
+.open-next/
+*.tsbuildinfo
+next-env.d.ts
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Environment & Secrets
+.env
+.env*.local
+*.pem
+*.key
+
+# Go
+backend/bin/
+*.exe
+*.test
+*.prof
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

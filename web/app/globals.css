@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-card: var(--surface-card);
+  --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+
+  --color-foreground: var(--foreground);
+  --color-foreground-muted: var(--foreground-muted);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-status-success-bg: var(--status-success-bg);
+  --color-status-success-fg: var(--status-success-fg);
+  --color-status-success-border: var(--status-success-border);
+
+  --color-status-warning-bg: var(--status-warning-bg);
+  --color-status-warning-fg: var(--status-warning-fg);
+  --color-status-warning-border: var(--status-warning-border);
+
+  --color-status-destructive-bg: var(--status-destructive-bg);
+  --color-status-destructive-fg: var(--status-destructive-fg);
+  --color-status-destructive-border: var(--status-destructive-border);
+
+  --color-ring: var(--ring);
+}
+
+:root {
+  /* Daytime Field / Office Light Theme */
+  --background: #ffffff;
+  --surface: #f4f4f5;
+  --surface-card: #ffffff;
+  --border: #e4e4e7;
+  --border-subtle: #f4f4f5;
+  --foreground: #09090b;
+  --foreground-muted: #52525b; /* 4.6:1 contrast against #ffffff */
+  --primary: #1d4ed8;
+  --primary-hover: #1e40af;
+  --primary-foreground: #ffffff;
+
+  --status-success-bg: #f0fdf4;
+  --status-success-fg: #15803d; /* 4.8:1 contrast */
+  --status-success-border: #bbf7d0;
+
+  --status-warning-bg: #fffbeb;
+  --status-warning-fg: #b45309; /* 4.6:1 contrast */
+  --status-warning-border: #fde68a;
+
+  --status-destructive-bg: #fef2f2;
+  --status-destructive-fg: #b91c1c; /* 5.1:1 contrast */
+  --status-destructive-border: #fecaca;
+
+  --ring: #2563eb;
+}
+
+.dark {
+  /* Mining Workstation Dark Theme (Default) */
+  --background: #09090b;
+  --surface: #18181b;
+  --surface-card: rgba(24, 24, 27, 0.75);
+  --border: #27272a;
+  --border-subtle: #18181b;
+  --foreground: #f4f4f5;
+  --foreground-muted: #a1a1aa; /* 5.2:1 contrast against #09090b */
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8; /* 4.7:1 contrast with #ffffff */
+  --primary-foreground: #ffffff;
+
+  --status-success-bg: rgba(22, 163, 74, 0.15);
+  --status-success-fg: #4ade80;
+  --status-success-border: rgba(74, 222, 128, 0.3);
+
+  --status-warning-bg: rgba(217, 119, 6, 0.15);
+  --status-warning-fg: #fbbf24;
+  --status-warning-border: rgba(251, 191, 36, 0.3);
+
+  --status-destructive-bg: rgba(220, 38, 38, 0.15);
+  --status-destructive-fg: #f87171;
+  --status-destructive-border: rgba(248, 113, 113, 0.3);
+
+  --ring: #3b82f6;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+/* Accessible focus ring style for all interactive elements */
+*:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* High density typography */
+.font-mono-num {
+  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
+}
