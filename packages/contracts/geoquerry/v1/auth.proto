@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package geoquerry.v1;
+
+option go_package = "gitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerry/v1;geoquerryv1";
+
+service AuthService {
+  // ExchangeAssertion validates a Next.js Ed25519 internal assertion and returns
+  // the caller's active user context and accessible organizations.
+  rpc ExchangeAssertion(ExchangeAssertionRequest) returns (ExchangeAssertionResponse);
+
+  // VerifySudo elevates the active session into sudo mode for 15 minutes upon password or MFA verification.
+  rpc VerifySudo(VerifySudoRequest) returns (VerifySudoResponse);
+
+  // GetSessionContext queries active session claims, permissions, and sudo state.
+  rpc GetSessionContext(GetSessionContextRequest) returns (GetSessionContextResponse);
+}
+
+message ExchangeAssertionRequest {
+  string internal_assertion = 1; // Ed25519-signed compact token from Next.js BFF
+}
+
+message UserProfile {
+  string user_id = 1;
+  string email = 2;
+  string display_name = 3;
+  string avatar_url = 4;
+}
+
+message ExchangeAssertionResponse {
+  UserProfile user = 1;
+  int64 server_time = 2;
+  bool sudo_active = 3;
+}
+
+message VerifySudoRequest {
+  string password = 1;      // Password challenge
+  string totp_code = 2;      // Optional TOTP 6-digit code
+}
+
+message VerifySudoResponse {
+  bool success = 1;
+  int64 sudo_expires_at = 2; // Epoch timestamp (now + 15 min)
+}
+
+message GetSessionContextRequest {}
+
+message GetSessionContextResponse {
+  UserProfile user = 1;
+  bool sudo_active = 2;
+  int64 sudo_expires_at = 3;
+}

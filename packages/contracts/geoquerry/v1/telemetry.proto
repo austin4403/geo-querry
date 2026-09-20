@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package geoquerry.v1;
+
+option go_package = "gitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerry/v1;geoquerryv1";
+
+message StreamTicketRequest {
+  string organization_id = 1;
+  string project_id = 2;
+}
+
+message StreamTicketResponse {
+  string ticket = 1;         // Single-use 256-bit token
+  int64 expires_at = 2;      // Valid for 30 seconds
+  string stream_url = 3;     // Stream endpoint
+}
+
+// One GPS breadcrumb sent from a field device. The mobile client opens a
+// single bidi stream and keeps pushing these points while the geologist is
+// traversing; the server answers with TeamMemberLocation snapshots.
+message StreamLiveTelemetryRequest {
+  string user_id = 1;
+  string user_name = 2;
+  string project_id = 3;
+  double latitude = 4;
+  double longitude = 5;
+  double elevation = 6;
+  double gps_accuracy = 7;
+  double heading = 8;
+  double speed_mps = 9;
+  int32 battery_percentage = 10;
+  int64 recorded_at = 11;
+  string stream_ticket = 12; // Optional for ticket-based handshakes
+}
+
+message TeamMemberLocation {
+  string user_id = 1;
+  string user_name = 2;
+  double latitude = 3;
+  double longitude = 4;
+  double elevation = 5;
+  double heading = 6;
+  int32 battery_percentage = 7;
+  int64 last_seen_at = 8;
+  bool is_active = 9;
+}
+
+// A full snapshot of everyone currently active on the same project. Sent to
+// every connected stream whenever any member moves, so the web portal map
+// stays live without polling.
+message StreamLiveTelemetryResponse {
+  string project_id = 1;
+  repeated TeamMemberLocation members = 2;
+  int64 seq_id = 3;          // Monotonic sequence identifier for replay buffer
+}
+
+service TelemetryService {
+  rpc AcquireStreamTicket(StreamTicketRequest) returns (StreamTicketResponse);
+  rpc StreamLiveTelemetry(stream StreamLiveTelemetryRequest) returns (stream StreamLiveTelemetryResponse);
+}

@@ -3,6 +3,7 @@ syntax = "proto3";
 
 package geoquerry.v1;
 
+import "geoquerry/v1/media.proto";
 import "geoquerry/v1/sync.proto";
 import "geoquerry/v1/telemetry.proto";
 
@@ -12,4 +13,9 @@ service GeoquerrySyncService {
   rpc PushSyncQueue(PushSyncQueueRequest) returns (PushSyncQueueResponse);
   rpc PullProjectData(PullProjectDataRequest) returns (PullProjectDataResponse);
   rpc StreamLiveTelemetry(stream StreamLiveTelemetryRequest) returns (stream StreamLiveTelemetryResponse);
+  // CreatePhotoUpload hands out a short-lived presigned R2 PUT URL so
+  // field devices upload photos DIRECTLY to object storage (see
+  // media.proto for the rationale). Mounted on the same service so the
+  // API-key interceptor covers it for free.
+  rpc CreatePhotoUpload(CreatePhotoUploadRequest) returns (CreatePhotoUploadResponse);
 }

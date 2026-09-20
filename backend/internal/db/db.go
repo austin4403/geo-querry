@@ -22,6 +22,16 @@ import (
 	"gitlab.com/austin4403/geoquerry/backend/internal/config"
 )
 
+// migrationLockID is an application-specific PostgreSQL advisory-lock key.
+//
+// PostgreSQL advisory locks are identified by a signed 64-bit integer. The
+// exact value is not important; it only needs to remain stable and avoid
+// colliding with other advisory locks used by this application.
+//
+// This lock serializes schema migrations when multiple application instances
+// start concurrently during a rolling deployment or scale-from-zero event.
+const migrationLockID int64 = 0x47454F5155455259 // ASCII-ish: "GEOQUERY"
+
 // migrations embeds every ./migrations/*.sql file INTO the compiled binary.
 //
 // This is deliberate: the Docker image is a bare ~15 MB scratch container
@@ -75,25 +85,39 @@ func Connect(ctx context.Context, cfg config.Config) (*pgxpool.Pool, error) {
 }
 
 // Migrate applies every not-yet-applied migration in lexical filename order
-// (which is why files are named 000001_init.sql, 000002_xxx.sql, ...).
+// (which is why files are named 000001_xxx.sql, 000002_xxx.sql, ...).
 //
-// Tracking lives in the schema_migrations table: each filename is recorded
-// inside the SAME transaction that applies its SQL, so a migration either
-// fully lands or fully rolls back — a half-applied file can never be marked
-// as done. This is the minimal reliable migration runner; if the project
-// later needs down-migrations or checksum verification, upgrade to
-// golang-migrate or press+goose without changing call sites.
+// CONCURRENT STARTUP SAFETY:
+// Rolling deployments and scale-to-zero compute can start several instances
+// concurrently. Without coordination, multiple instances could both observe
+// that a migration is missing and attempt to apply it.
 //
-// NOTE: two instances booting concurrently (e.g. a rolling deploy) can both
-// pass the "already applied?" check. The transaction does not prevent them
-// from racing; if that ever becomes a real problem, take a Postgres advisory
-// lock (pg_advisory_lock) at the top of this function.
+// We prevent that race with a PostgreSQL session-level advisory lock.
+// The lock and unlock MUST run through the same physical database connection.
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
-	// The bookkeeping table is created outside the loop with IF NOT EXISTS:
-	// on the very first boot it must exist before we can query it.
+	lockConn, err := pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("db: acquire migration lock connection: %w", err)
+	}
+	defer lockConn.Release()
+
+	// pg_advisory_lock waits until any other migrating instance releases the lock.
+	if _, err := lockConn.Exec(ctx, `SELECT pg_advisory_lock($1)`, migrationLockID); err != nil {
+		return fmt.Errorf("db: acquire migration advisory lock: %w", err)
+	}
+
+	defer func() {
+		unlockCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if _, unlockErr := lockConn.Exec(unlockCtx, `SELECT pg_advisory_unlock($1)`, migrationLockID); unlockErr != nil {
+			log.Printf("db: release migration advisory lock: %v", unlockErr)
+		}
+	}()
+
+	// The bookkeeping table is created after acquiring the lock.
 	if _, err := pool.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
-			version    TEXT PRIMARY KEY,   -- migration filename, e.g. "000001_init.sql"
+			version    TEXT PRIMARY KEY,
 			applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)
 	`); err != nil {
@@ -104,19 +128,14 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	if err != nil {
 		return fmt.Errorf("db: read migrations dir: %w", err)
 	}
-	// Lexical sort == numeric order as long as filenames zero-pad their
-	// sequence number (000010 sorts after 000009 — "10" would not).
+
+	// Lexical sort == numeric order as long as filenames zero-pad their sequence number.
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") || strings.HasSuffix(entry.Name(), ".down.sql") {
 			continue
 		}
-		// The apply+record logic lives in its own function so that the
-		// deferred tx.Rollback below is scoped to one iteration. A defer
-		// inside the loop body itself would pile up one rollback per file
-		// and only run them all when Migrate returns — harmless-ish here,
-		// but a real leak pattern once migrations grow.
 		if err := applyOne(ctx, pool, entry.Name()); err != nil {
 			return err
 		}
@@ -126,8 +145,6 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 }
 
 // applyOne applies a single migration file if it has not been applied yet.
-// It is idempotent: already-recorded files are skipped without touching the
-// database.
 func applyOne(ctx context.Context, pool *pgxpool.Pool, name string) error {
 	var applied bool
 	if err := pool.QueryRow(ctx,
@@ -137,7 +154,7 @@ func applyOne(ctx context.Context, pool *pgxpool.Pool, name string) error {
 		return fmt.Errorf("db: check %s: %w", name, err)
 	}
 	if applied {
-		return nil // already landed in a previous boot — skip
+		return nil
 	}
 
 	sqlBytes, err := migrations.ReadFile("migrations/" + name)
@@ -149,18 +166,12 @@ func applyOne(ctx context.Context, pool *pgxpool.Pool, name string) error {
 	if err != nil {
 		return fmt.Errorf("db: begin %s: %w", name, err)
 	}
-	// Rollback is deferred as a SAFETY NET only: after a successful Commit
-	// it becomes a documented no-op (pgx returns ErrTxClosed, which we
-	// ignore by not checking the return value here).
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	// Multi-statement SQL executes fine through pgx's simple-protocol-ish
-	// Exec path; no need to split on semicolons ourselves.
 	if _, err := tx.Exec(ctx, string(sqlBytes)); err != nil {
 		return fmt.Errorf("db: apply %s: %w", name, err)
 	}
 
-	// Record the version INSIDE the same transaction as the DDL above.
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO schema_migrations (version) VALUES ($1)`,
 		name,

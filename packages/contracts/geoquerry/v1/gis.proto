@@ -1,0 +1,118 @@
+syntax = "proto3";
+
+package geoquerry.v1;
+
+import "geoquerry/v1/common.proto";
+
+option go_package = "gitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerry/v1;geoquerryv1";
+
+enum DatasetKind {
+  DATASET_KIND_UNSPECIFIED = 0;
+  DATASET_KIND_SHAPEFILE_ARCHIVE = 1;
+  DATASET_KIND_GEOTIFF = 2;
+  DATASET_KIND_CWLS_LAS = 3;      // Borehole / well-log LAS
+  DATASET_KIND_ASPRS_LAS = 4;     // Airborne LiDAR point cloud
+  DATASET_KIND_SURVEY_CSV = 5;
+}
+
+enum IngestionStatus {
+  INGESTION_STATUS_UNSPECIFIED = 0;
+  INGESTION_STATUS_QUARANTINED = 1;
+  INGESTION_STATUS_SCANNING = 2;
+  INGESTION_STATUS_PROCESSING = 3;
+  INGESTION_STATUS_READY = 4;
+  INGESTION_STATUS_FAILED = 5;
+}
+
+message CoordinateReferenceSystem {
+  string epsg_code = 1;       // e.g. "EPSG:32636"
+  string datum_name = 2;      // e.g. "WGS 84" or "Arc 1960"
+  string projection_name = 3; // e.g. "UTM Zone 36N"
+  string units = 4;           // "metre", "degree", etc.
+  string transform_pipeline = 5; // PROJ pipeline representation
+}
+
+message BoundingBox {
+  double min_x = 1;
+  double min_y = 2;
+  double max_x = 3;
+  double max_y = 4;
+}
+
+message GisDatasetSummary {
+  string dataset_id = 1;
+  string organization_id = 2;
+  string project_id = 3;
+  DatasetKind kind = 4;
+  string display_name = 5;
+  int64 byte_size = 6;
+  IngestionStatus status = 7;
+  string failure_reason = 8;
+  CoordinateReferenceSystem crs = 9;
+  BoundingBox bounds_wgs84 = 10;
+  int64 created_at = 11;
+  int64 updated_at = 12;
+}
+
+service GisIngestionService {
+  // InitiateDatasetUpload generates a quarantine presigned PUT URL in Cloudflare R2.
+  rpc InitiateDatasetUpload(InitiateDatasetUploadRequest) returns (InitiateDatasetUploadResponse);
+
+  // CompleteDatasetUpload notifies the backend that upload finished, enqueuing a sandboxed processing job.
+  rpc CompleteDatasetUpload(CompleteDatasetUploadRequest) returns (CompleteDatasetUploadResponse);
+
+  // GetDatasetStatus polls the ingestion state and extraction summary.
+  rpc GetDatasetStatus(GetDatasetStatusRequest) returns (GetDatasetStatusResponse);
+
+  // ListDatasets returns verified spatial datasets for a project.
+  rpc ListDatasets(ListDatasetsRequest) returns (ListDatasetsResponse);
+}
+
+message InitiateDatasetUploadRequest {
+  string organization_id = 1;
+  string project_id = 2;
+  DatasetKind kind = 3;
+  string display_name = 4;
+  int64 byte_size = 5;
+  string content_type = 6;
+}
+
+message InitiateDatasetUploadResponse {
+  string upload_id = 1;
+  string presigned_upload_url = 2;
+  int64 expires_at = 3;
+  map<string, string> required_headers = 4;
+}
+
+message CompleteDatasetUploadRequest {
+  string organization_id = 1;
+  string project_id = 2;
+  string upload_id = 3;
+  string expected_checksum_sha256 = 4;
+}
+
+message CompleteDatasetUploadResponse {
+  string dataset_id = 1;
+  IngestionStatus status = 2;
+}
+
+message GetDatasetStatusRequest {
+  string organization_id = 1;
+  string project_id = 2;
+  string dataset_id = 3;
+}
+
+message GetDatasetStatusResponse {
+  GisDatasetSummary dataset = 1;
+}
+
+message ListDatasetsRequest {
+  string organization_id = 1;
+  string project_id = 2;
+  CursorPaginationRequest pagination = 3;
+}
+
+message ListDatasetsResponse {
+  repeated GisDatasetSummary datasets = 1;
+  CursorPaginationResponse pagination = 2;
+}

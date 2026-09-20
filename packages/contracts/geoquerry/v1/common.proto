@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package geoquerry.v1;
+
+option go_package = "gitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerry/v1;geoquerryv1";
+
+// ErrorInfo provides structured, machine-readable diagnostics attached to ConnectRPC errors.
+// Prevents internal SQL, path, or stack trace disclosure.
+message ErrorInfo {
+  string error_code = 1;     // e.g. "GEO_PERMISSION_DENIED", "GEO_SUDO_REQUIRED", "GEO_TENANT_NOT_FOUND"
+  string message = 2;        // Safe, sanitized human-readable message
+  string correlation_id = 3; // Trace correlation identifier
+  map<string, string> metadata = 4;
+}
+
+// CursorPaginationRequest standardizes opaque cursor pagination across collections.
+message CursorPaginationRequest {
+  string cursor = 1;         // Opaque base64 cursor representing (timestamp, id)
+  int32 page_size = 2;       // Maximum items to return (clamped between 1 and 100)
+}
+
+// CursorPaginationResponse returns next cursor info.
+message CursorPaginationResponse {
+  string next_cursor = 1;    // Empty if end of collection reached
+  bool has_more = 2;
+  int64 total_estimate = 3;  // Optional non-exact count estimate
+}

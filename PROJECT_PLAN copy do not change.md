@@ -1,3 +1,6 @@
+Ai should not change this file. this file will be used in review and verification that the AI built what it was instructed.
+
+
 # 🗺️ GeoQuerry — Master Project Plan, Progress & Architecture Guide
 
 > **Current Status**: Phase 1 — Backend core implemented (sync engine, LWW conflicts, live telemetry hub)  

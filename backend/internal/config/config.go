@@ -61,6 +61,32 @@ type Config struct {
 	// SECURITY.md for the roadmap to per-user auth.
 	APIKeys []string
 
+	// --- Cloudflare R2 (photo uploads) ---------------------------------
+	// All four R2_* values must be set together; when any is missing the
+	// presigner is not built and CreatePhotoUpload answers unimplemented.
+	// Find them in the Cloudflare dashboard under R2 → API tokens.
+	R2AccountID       string        // numeric account id (endpoint subdomain)
+	R2AccessKeyID     string        // token's Access Key ID
+	R2SecretAccessKey string        // token's Secret
+	R2Bucket          string        // bucket name, e.g. "geoquerry-photos"
+	PhotoPutTTL       time.Duration // presigned URL lifetime (R2_PUT_TTL)
+	PhotoMaxBytes     int64         // per-photo cap (PHOTO_MAX_BYTES)
+
+	// --- M-Pesa Daraja (KES) --------------------------------------------
+	// Enabled as a group when MPESA_ENV is "sandbox" or "production".
+	MPesaEnabled      bool
+	MPesaEnv          string // sandbox | production
+	MPesaShortcode    string // Paybill / Till number
+	MPesaPasskey      string // Lipa Na M-Pesa Online passkey (from Daraja portal)
+	MPesaConsumerKey  string
+	MPesaConsumerSec  string
+	MPesaWebhookToken string // high-entropy secret embedded in the callback path
+
+	// --- Paystack (cards / USD) -------------------------------------------
+	// Enabled when PAYSTACK_SECRET_KEY is set.
+	PaystackEnabled bool
+	PaystackKey     string
+
 	// MaxBodyBytes caps request body size on the UNARY sync RPCs (env:
 	// MAX_BODY_BYTES). A hostile or buggy client pushing an enormous batch
 	// must not be able to balloon the 512 MB Koyeb container's memory; a
@@ -106,6 +132,36 @@ func Load() (Config, error) {
 			}
 		}
 	}
+
+	// --- R2 photo uploads (enabled only when ALL four credentials exist;
+	// partial config would produce presigned URLs that fail at upload) ---
+	cfg.R2AccountID = os.Getenv("R2_ACCOUNT_ID")
+	cfg.R2AccessKeyID = os.Getenv("R2_ACCESS_KEY_ID")
+	cfg.R2SecretAccessKey = os.Getenv("R2_SECRET_ACCESS_KEY")
+	cfg.R2Bucket = os.Getenv("R2_BUCKET")
+	cfg.PhotoPutTTL = envDurationOr("R2_PUT_TTL", 5*time.Minute)
+	cfg.PhotoMaxBytes = envInt64Or("PHOTO_MAX_BYTES", 15<<20)
+
+	// --- M-Pesa: the env selector doubles as the on/off switch. ---
+	cfg.MPesaEnv = os.Getenv("MPESA_ENV")
+	cfg.MPesaEnabled = cfg.MPesaEnv == "sandbox" || cfg.MPesaEnv == "production"
+	if cfg.MPesaEnabled {
+		cfg.MPesaShortcode = os.Getenv("MPESA_SHORTCODE")
+		cfg.MPesaPasskey = os.Getenv("MPESA_PASSKEY")
+		cfg.MPesaConsumerKey = os.Getenv("MPESA_CONSUMER_KEY")
+		cfg.MPesaConsumerSec = os.Getenv("MPESA_CONSUMER_SECRET")
+		cfg.MPesaWebhookToken = os.Getenv("MPESA_WEBHOOK_SECRET")
+		// A half-configured payment rail must never boot: money is involved.
+		if cfg.MPesaShortcode == "" || cfg.MPesaPasskey == "" ||
+			cfg.MPesaConsumerKey == "" || cfg.MPesaConsumerSec == "" ||
+			cfg.MPesaWebhookToken == "" {
+			return Config{}, fmt.Errorf("config: MPESA_ENV is set but payment credentials are incomplete (need SHORTCODE, PASSKEY, CONSUMER_KEY, CONSUMER_SECRET, WEBHOOK_SECRET)")
+		}
+	}
+
+	// --- Paystack: presence of the secret key is the switch. ---
+	cfg.PaystackKey = os.Getenv("PAYSTACK_SECRET_KEY")
+	cfg.PaystackEnabled = cfg.PaystackKey != ""
 
 	// CORS origins are passed as a comma-separated list because many
 	// platforms (Koyeb, Fly, Heroku) only support string env vars:

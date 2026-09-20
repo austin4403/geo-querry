@@ -44,6 +44,9 @@ const (
 	// GeoquerrySyncServiceStreamLiveTelemetryProcedure is the fully-qualified name of the
 	// GeoquerrySyncService's StreamLiveTelemetry RPC.
 	GeoquerrySyncServiceStreamLiveTelemetryProcedure = "/geoquerry.v1.GeoquerrySyncService/StreamLiveTelemetry"
+	// GeoquerrySyncServiceCreatePhotoUploadProcedure is the fully-qualified name of the
+	// GeoquerrySyncService's CreatePhotoUpload RPC.
+	GeoquerrySyncServiceCreatePhotoUploadProcedure = "/geoquerry.v1.GeoquerrySyncService/CreatePhotoUpload"
 )
 
 // GeoquerrySyncServiceClient is a client for the geoquerry.v1.GeoquerrySyncService service.
@@ -51,6 +54,11 @@ type GeoquerrySyncServiceClient interface {
 	PushSyncQueue(context.Context, *connect.Request[v1.PushSyncQueueRequest]) (*connect.Response[v1.PushSyncQueueResponse], error)
 	PullProjectData(context.Context, *connect.Request[v1.PullProjectDataRequest]) (*connect.Response[v1.PullProjectDataResponse], error)
 	StreamLiveTelemetry(context.Context) *connect.BidiStreamForClient[v1.StreamLiveTelemetryRequest, v1.StreamLiveTelemetryResponse]
+	// CreatePhotoUpload hands out a short-lived presigned R2 PUT URL so
+	// field devices upload photos DIRECTLY to object storage (see
+	// media.proto for the rationale). Mounted on the same service so the
+	// API-key interceptor covers it for free.
+	CreatePhotoUpload(context.Context, *connect.Request[v1.CreatePhotoUploadRequest]) (*connect.Response[v1.CreatePhotoUploadResponse], error)
 }
 
 // NewGeoquerrySyncServiceClient constructs a client for the geoquerry.v1.GeoquerrySyncService
@@ -82,6 +90,12 @@ func NewGeoquerrySyncServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(geoquerrySyncServiceMethods.ByName("StreamLiveTelemetry")),
 			connect.WithClientOptions(opts...),
 		),
+		createPhotoUpload: connect.NewClient[v1.CreatePhotoUploadRequest, v1.CreatePhotoUploadResponse](
+			httpClient,
+			baseURL+GeoquerrySyncServiceCreatePhotoUploadProcedure,
+			connect.WithSchema(geoquerrySyncServiceMethods.ByName("CreatePhotoUpload")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -90,6 +104,7 @@ type geoquerrySyncServiceClient struct {
 	pushSyncQueue       *connect.Client[v1.PushSyncQueueRequest, v1.PushSyncQueueResponse]
 	pullProjectData     *connect.Client[v1.PullProjectDataRequest, v1.PullProjectDataResponse]
 	streamLiveTelemetry *connect.Client[v1.StreamLiveTelemetryRequest, v1.StreamLiveTelemetryResponse]
+	createPhotoUpload   *connect.Client[v1.CreatePhotoUploadRequest, v1.CreatePhotoUploadResponse]
 }
 
 // PushSyncQueue calls geoquerry.v1.GeoquerrySyncService.PushSyncQueue.
@@ -107,12 +122,22 @@ func (c *geoquerrySyncServiceClient) StreamLiveTelemetry(ctx context.Context) *c
 	return c.streamLiveTelemetry.CallBidiStream(ctx)
 }
 
+// CreatePhotoUpload calls geoquerry.v1.GeoquerrySyncService.CreatePhotoUpload.
+func (c *geoquerrySyncServiceClient) CreatePhotoUpload(ctx context.Context, req *connect.Request[v1.CreatePhotoUploadRequest]) (*connect.Response[v1.CreatePhotoUploadResponse], error) {
+	return c.createPhotoUpload.CallUnary(ctx, req)
+}
+
 // GeoquerrySyncServiceHandler is an implementation of the geoquerry.v1.GeoquerrySyncService
 // service.
 type GeoquerrySyncServiceHandler interface {
 	PushSyncQueue(context.Context, *connect.Request[v1.PushSyncQueueRequest]) (*connect.Response[v1.PushSyncQueueResponse], error)
 	PullProjectData(context.Context, *connect.Request[v1.PullProjectDataRequest]) (*connect.Response[v1.PullProjectDataResponse], error)
 	StreamLiveTelemetry(context.Context, *connect.BidiStream[v1.StreamLiveTelemetryRequest, v1.StreamLiveTelemetryResponse]) error
+	// CreatePhotoUpload hands out a short-lived presigned R2 PUT URL so
+	// field devices upload photos DIRECTLY to object storage (see
+	// media.proto for the rationale). Mounted on the same service so the
+	// API-key interceptor covers it for free.
+	CreatePhotoUpload(context.Context, *connect.Request[v1.CreatePhotoUploadRequest]) (*connect.Response[v1.CreatePhotoUploadResponse], error)
 }
 
 // NewGeoquerrySyncServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -140,6 +165,12 @@ func NewGeoquerrySyncServiceHandler(svc GeoquerrySyncServiceHandler, opts ...con
 		connect.WithSchema(geoquerrySyncServiceMethods.ByName("StreamLiveTelemetry")),
 		connect.WithHandlerOptions(opts...),
 	)
+	geoquerrySyncServiceCreatePhotoUploadHandler := connect.NewUnaryHandler(
+		GeoquerrySyncServiceCreatePhotoUploadProcedure,
+		svc.CreatePhotoUpload,
+		connect.WithSchema(geoquerrySyncServiceMethods.ByName("CreatePhotoUpload")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/geoquerry.v1.GeoquerrySyncService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case GeoquerrySyncServicePushSyncQueueProcedure:
@@ -148,6 +179,8 @@ func NewGeoquerrySyncServiceHandler(svc GeoquerrySyncServiceHandler, opts ...con
 			geoquerrySyncServicePullProjectDataHandler.ServeHTTP(w, r)
 		case GeoquerrySyncServiceStreamLiveTelemetryProcedure:
 			geoquerrySyncServiceStreamLiveTelemetryHandler.ServeHTTP(w, r)
+		case GeoquerrySyncServiceCreatePhotoUploadProcedure:
+			geoquerrySyncServiceCreatePhotoUploadHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -167,4 +200,8 @@ func (UnimplementedGeoquerrySyncServiceHandler) PullProjectData(context.Context,
 
 func (UnimplementedGeoquerrySyncServiceHandler) StreamLiveTelemetry(context.Context, *connect.BidiStream[v1.StreamLiveTelemetryRequest, v1.StreamLiveTelemetryResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("geoquerry.v1.GeoquerrySyncService.StreamLiveTelemetry is not implemented"))
+}
+
+func (UnimplementedGeoquerrySyncServiceHandler) CreatePhotoUpload(context.Context, *connect.Request[v1.CreatePhotoUploadRequest]) (*connect.Response[v1.CreatePhotoUploadResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("geoquerry.v1.GeoquerrySyncService.CreatePhotoUpload is not implemented"))
 }

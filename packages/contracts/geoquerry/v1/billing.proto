@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package geoquerry.v1;
+
+option go_package = "gitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerry/v1;geoquerryv1";
+
+enum BillingProvider {
+  BILLING_PROVIDER_UNSPECIFIED = 0;
+  BILLING_PROVIDER_MPESA = 1;
+  BILLING_PROVIDER_STRIPE = 2;
+}
+
+enum SubscriptionStatus {
+  SUBSCRIPTION_STATUS_UNSPECIFIED = 0;
+  SUBSCRIPTION_STATUS_INACTIVE = 1;
+  SUBSCRIPTION_STATUS_TRIALING = 2;
+  SUBSCRIPTION_STATUS_ACTIVE = 3;
+  SUBSCRIPTION_STATUS_PAST_DUE = 4;
+  SUBSCRIPTION_STATUS_CANCELED = 5;
+  SUBSCRIPTION_STATUS_UNPAID = 6;
+}
+
+message PlanItem {
+  string plan_id = 1;
+  string name = 2;
+  string description = 3;
+  int64 amount_minor_units = 4; // Minor units (e.g. 500000 = 5,000 KES, 4900 = 49 USD)
+  string currency = 5;          // "KES" or "USD"
+  string interval = 6;          // "month" or "year"
+  repeated string features = 7;
+}
+
+message OrganizationSubscription {
+  string organization_id = 1;
+  string plan_id = 2;
+  SubscriptionStatus status = 3;
+  int64 current_period_end = 4;
+  bool cancel_at_period_end = 5;
+  repeated string entitlements = 6;
+}
+
+service BillingService {
+  // GetPriceCatalog returns the server-authoritative pricing tiers.
+  rpc GetPriceCatalog(GetPriceCatalogRequest) returns (GetPriceCatalogResponse);
+
+  // InitiateMpesaStkPush starts an STK push transaction to the specified phone number for a plan.
+  rpc InitiateMpesaStkPush(InitiateMpesaStkPushRequest) returns (InitiateMpesaStkPushResponse);
+
+  // CreateStripeCheckoutSession creates a hosted Stripe checkout session for an organization.
+  rpc CreateStripeCheckoutSession(CreateStripeCheckoutSessionRequest) returns (CreateStripeCheckoutSessionResponse);
+
+  // GetSubscriptionStatus queries current plan and active entitlements for an organization.
+  rpc GetSubscriptionStatus(GetSubscriptionStatusRequest) returns (GetSubscriptionStatusResponse);
+}
+
+message GetPriceCatalogRequest {
+  string currency = 1; // Optional filter ("KES" or "USD")
+}
+
+message GetPriceCatalogResponse {
+  repeated PlanItem plans = 1;
+}
+
+message InitiateMpesaStkPushRequest {
+  string organization_id = 1;
+  string plan_id = 2;
+  string phone_number = 3; // E.164 or Kenyan local format (e.g. 254712345678)
+}
+
+message InitiateMpesaStkPushResponse {
+  string payment_attempt_id = 1;
+  string customer_message = 2;
+  int64 server_time = 3;
+}
+
+message CreateStripeCheckoutSessionRequest {
+  string organization_id = 1;
+  string plan_id = 2;
+  string success_url = 3;
+  string cancel_url = 4;
+}
+
+message CreateStripeCheckoutSessionResponse {
+  string checkout_session_id = 1;
+  string checkout_url = 2;
+}
+
+message GetSubscriptionStatusRequest {
+  string organization_id = 1;
+}
+
+message GetSubscriptionStatusResponse {
+  OrganizationSubscription subscription = 1;
+}

@@ -1,0 +1,200 @@
+syntax = "proto3";
+
+package geoquerry.v1;
+
+import "geoquerry/v1/common.proto";
+
+option go_package = "gitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerry/v1;geoquerryv1";
+
+enum TenantRole {
+  TENANT_ROLE_UNSPECIFIED = 0;
+  TENANT_ROLE_VIEWER = 1;
+  TENANT_ROLE_GEOLOGIST = 2;
+  TENANT_ROLE_ADMIN = 3;
+  TENANT_ROLE_OWNER = 4;
+}
+
+message OrganizationSummary {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  TenantRole caller_role = 4;
+  string subscription_tier = 5;
+  int64 created_at = 6;
+}
+
+message OrganizationMember {
+  string user_id = 1;
+  string email = 2;
+  string display_name = 3;
+  TenantRole role = 4;
+  int64 joined_at = 5;
+}
+
+message ProjectSummary {
+  string id = 1;
+  string organization_id = 2;
+  string name = 3;
+  string description = 4;
+  string target_commodity = 5; // e.g. Gold, Lithium, Copper
+  string crs_epsg = 6;          // e.g. "EPSG:32636" (UTM 36N)
+  int64 created_at = 7;
+  int64 updated_at = 8;
+}
+
+service TenantService {
+  // Organization operations
+  rpc ListOrganizations(ListOrganizationsRequest) returns (ListOrganizationsResponse);
+  rpc GetOrganization(GetOrganizationRequest) returns (GetOrganizationResponse);
+  rpc CreateOrganization(CreateOrganizationRequest) returns (CreateOrganizationResponse);
+  rpc UpdateOrganization(UpdateOrganizationRequest) returns (UpdateOrganizationResponse);
+  rpc TransferOrganizationOwnership(TransferOrganizationOwnershipRequest) returns (TransferOrganizationOwnershipResponse);
+
+  // Membership operations
+  rpc ListMembers(ListMembersRequest) returns (ListMembersResponse);
+  rpc InviteMember(InviteMemberRequest) returns (InviteMemberResponse);
+  rpc UpdateMemberRole(UpdateMemberRoleRequest) returns (UpdateMemberRoleResponse);
+  rpc RemoveMember(RemoveMemberRequest) returns (RemoveMemberResponse);
+
+  // Project operations
+  rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse);
+  rpc GetProject(GetProjectRequest) returns (GetProjectResponse);
+  rpc CreateProject(CreateProjectRequest) returns (CreateProjectResponse);
+  rpc UpdateProject(UpdateProjectRequest) returns (UpdateProjectResponse);
+  rpc DeleteProject(DeleteProjectRequest) returns (DeleteProjectResponse);
+}
+
+message ListOrganizationsRequest {
+  CursorPaginationRequest pagination = 1;
+}
+
+message ListOrganizationsResponse {
+  repeated OrganizationSummary organizations = 1;
+  CursorPaginationResponse pagination = 2;
+}
+
+message GetOrganizationRequest {
+  string organization_id = 1;
+}
+
+message GetOrganizationResponse {
+  OrganizationSummary organization = 1;
+}
+
+message CreateOrganizationRequest {
+  string name = 1;
+  string slug = 2;
+}
+
+message CreateOrganizationResponse {
+  OrganizationSummary organization = 1;
+}
+
+message UpdateOrganizationRequest {
+  string organization_id = 1;
+  string name = 2;
+}
+
+message UpdateOrganizationResponse {
+  OrganizationSummary organization = 1;
+}
+
+message TransferOrganizationOwnershipRequest {
+  string organization_id = 1;
+  string target_user_id = 2;
+}
+
+message TransferOrganizationOwnershipResponse {
+  bool success = 1;
+}
+
+message ListMembersRequest {
+  string organization_id = 1;
+  CursorPaginationRequest pagination = 2;
+}
+
+message ListMembersResponse {
+  repeated OrganizationMember members = 1;
+  CursorPaginationResponse pagination = 2;
+}
+
+message InviteMemberRequest {
+  string organization_id = 1;
+  string email = 2;
+  TenantRole requested_role = 3;
+}
+
+message InviteMemberResponse {
+  string invitation_id = 1;
+}
+
+message UpdateMemberRoleRequest {
+  string organization_id = 1;
+  string target_user_id = 2;
+  TenantRole new_role = 3;
+}
+
+message UpdateMemberRoleResponse {
+  bool success = 1;
+}
+
+message RemoveMemberRequest {
+  string organization_id = 1;
+  string target_user_id = 2;
+}
+
+message RemoveMemberResponse {
+  bool success = 1;
+}
+
+message ListProjectsRequest {
+  string organization_id = 1;
+  CursorPaginationRequest pagination = 2;
+}
+
+message ListProjectsResponse {
+  repeated ProjectSummary projects = 1;
+  CursorPaginationResponse pagination = 2;
+}
+
+message GetProjectRequest {
+  string organization_id = 1;
+  string project_id = 2;
+}
+
+message GetProjectResponse {
+  ProjectSummary project = 1;
+}
+
+message CreateProjectRequest {
+  string organization_id = 1;
+  string name = 2;
+  string description = 3;
+  string target_commodity = 4;
+  string crs_epsg = 5;
+}
+
+message CreateProjectResponse {
+  ProjectSummary project = 1;
+}
+
+message UpdateProjectRequest {
+  string organization_id = 1;
+  string project_id = 2;
+  string name = 3;
+  string description = 4;
+  string target_commodity = 5;
+}
+
+message UpdateProjectResponse {
+  ProjectSummary project = 1;
+}
+
+message DeleteProjectRequest {
+  string organization_id = 1;
+  string project_id = 2;
+}
+
+message DeleteProjectResponse {
+  bool success = 1;
+}

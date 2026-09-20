@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package geoquerry.v1;
+
+import "geoquerry/v1/common.proto";
+
+option go_package = "gitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerry/v1;geoquerryv1";
+
+message AuditRecord {
+  string id = 1;
+  string organization_id = 2;
+  string actor_user_id = 3;
+  string actor_email = 4;
+  string action = 5;
+  string resource_type = 6;
+  string resource_id = 7;
+  string ip_address = 8;
+  string user_agent = 9;
+  map<string, string> metadata = 10;
+  int64 timestamp = 11;
+}
+
+service AuditService {
+  rpc ListAuditLogs(ListAuditLogsRequest) returns (ListAuditLogsResponse);
+}
+
+message ListAuditLogsRequest {
+  string organization_id = 1;
+  string resource_type = 2; // Optional filter
+  string action = 3;        // Optional filter
+  CursorPaginationRequest pagination = 4;
+}
+
+message ListAuditLogsResponse {
+  repeated AuditRecord logs = 1;
+  CursorPaginationResponse pagination = 2;
+}

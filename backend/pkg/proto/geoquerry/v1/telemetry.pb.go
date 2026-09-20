@@ -21,6 +21,118 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type StreamTicketRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	OrganizationId string                 `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	ProjectId      string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *StreamTicketRequest) Reset() {
+	*x = StreamTicketRequest{}
+	mi := &file_geoquerry_v1_telemetry_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StreamTicketRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StreamTicketRequest) ProtoMessage() {}
+
+func (x *StreamTicketRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_geoquerry_v1_telemetry_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StreamTicketRequest.ProtoReflect.Descriptor instead.
+func (*StreamTicketRequest) Descriptor() ([]byte, []int) {
+	return file_geoquerry_v1_telemetry_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *StreamTicketRequest) GetOrganizationId() string {
+	if x != nil {
+		return x.OrganizationId
+	}
+	return ""
+}
+
+func (x *StreamTicketRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+type StreamTicketResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ticket        string                 `protobuf:"bytes,1,opt,name=ticket,proto3" json:"ticket,omitempty"`                         // Single-use 256-bit token
+	ExpiresAt     int64                  `protobuf:"varint,2,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"` // Valid for 30 seconds
+	StreamUrl     string                 `protobuf:"bytes,3,opt,name=stream_url,json=streamUrl,proto3" json:"stream_url,omitempty"`  // Stream endpoint
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StreamTicketResponse) Reset() {
+	*x = StreamTicketResponse{}
+	mi := &file_geoquerry_v1_telemetry_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StreamTicketResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StreamTicketResponse) ProtoMessage() {}
+
+func (x *StreamTicketResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_geoquerry_v1_telemetry_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StreamTicketResponse.ProtoReflect.Descriptor instead.
+func (*StreamTicketResponse) Descriptor() ([]byte, []int) {
+	return file_geoquerry_v1_telemetry_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *StreamTicketResponse) GetTicket() string {
+	if x != nil {
+		return x.Ticket
+	}
+	return ""
+}
+
+func (x *StreamTicketResponse) GetExpiresAt() int64 {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return 0
+}
+
+func (x *StreamTicketResponse) GetStreamUrl() string {
+	if x != nil {
+		return x.StreamUrl
+	}
+	return ""
+}
+
 // One GPS breadcrumb sent from a field device. The mobile client opens a
 // single bidi stream and keeps pushing these points while the geologist is
 // traversing; the server answers with TeamMemberLocation snapshots.
@@ -37,13 +149,14 @@ type StreamLiveTelemetryRequest struct {
 	SpeedMps          float64                `protobuf:"fixed64,9,opt,name=speed_mps,json=speedMps,proto3" json:"speed_mps,omitempty"`
 	BatteryPercentage int32                  `protobuf:"varint,10,opt,name=battery_percentage,json=batteryPercentage,proto3" json:"battery_percentage,omitempty"`
 	RecordedAt        int64                  `protobuf:"varint,11,opt,name=recorded_at,json=recordedAt,proto3" json:"recorded_at,omitempty"`
+	StreamTicket      string                 `protobuf:"bytes,12,opt,name=stream_ticket,json=streamTicket,proto3" json:"stream_ticket,omitempty"` // Optional for ticket-based handshakes
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
 
 func (x *StreamLiveTelemetryRequest) Reset() {
 	*x = StreamLiveTelemetryRequest{}
-	mi := &file_geoquerry_v1_telemetry_proto_msgTypes[0]
+	mi := &file_geoquerry_v1_telemetry_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -55,7 +168,7 @@ func (x *StreamLiveTelemetryRequest) String() string {
 func (*StreamLiveTelemetryRequest) ProtoMessage() {}
 
 func (x *StreamLiveTelemetryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_geoquerry_v1_telemetry_proto_msgTypes[0]
+	mi := &file_geoquerry_v1_telemetry_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -68,7 +181,7 @@ func (x *StreamLiveTelemetryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamLiveTelemetryRequest.ProtoReflect.Descriptor instead.
 func (*StreamLiveTelemetryRequest) Descriptor() ([]byte, []int) {
-	return file_geoquerry_v1_telemetry_proto_rawDescGZIP(), []int{0}
+	return file_geoquerry_v1_telemetry_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *StreamLiveTelemetryRequest) GetUserId() string {
@@ -148,6 +261,13 @@ func (x *StreamLiveTelemetryRequest) GetRecordedAt() int64 {
 	return 0
 }
 
+func (x *StreamLiveTelemetryRequest) GetStreamTicket() string {
+	if x != nil {
+		return x.StreamTicket
+	}
+	return ""
+}
+
 type TeamMemberLocation struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	UserId            string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
@@ -165,7 +285,7 @@ type TeamMemberLocation struct {
 
 func (x *TeamMemberLocation) Reset() {
 	*x = TeamMemberLocation{}
-	mi := &file_geoquerry_v1_telemetry_proto_msgTypes[1]
+	mi := &file_geoquerry_v1_telemetry_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -177,7 +297,7 @@ func (x *TeamMemberLocation) String() string {
 func (*TeamMemberLocation) ProtoMessage() {}
 
 func (x *TeamMemberLocation) ProtoReflect() protoreflect.Message {
-	mi := &file_geoquerry_v1_telemetry_proto_msgTypes[1]
+	mi := &file_geoquerry_v1_telemetry_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -190,7 +310,7 @@ func (x *TeamMemberLocation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TeamMemberLocation.ProtoReflect.Descriptor instead.
 func (*TeamMemberLocation) Descriptor() ([]byte, []int) {
-	return file_geoquerry_v1_telemetry_proto_rawDescGZIP(), []int{1}
+	return file_geoquerry_v1_telemetry_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *TeamMemberLocation) GetUserId() string {
@@ -263,13 +383,14 @@ type StreamLiveTelemetryResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	Members       []*TeamMemberLocation  `protobuf:"bytes,2,rep,name=members,proto3" json:"members,omitempty"`
+	SeqId         int64                  `protobuf:"varint,3,opt,name=seq_id,json=seqId,proto3" json:"seq_id,omitempty"` // Monotonic sequence identifier for replay buffer
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *StreamLiveTelemetryResponse) Reset() {
 	*x = StreamLiveTelemetryResponse{}
-	mi := &file_geoquerry_v1_telemetry_proto_msgTypes[2]
+	mi := &file_geoquerry_v1_telemetry_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -281,7 +402,7 @@ func (x *StreamLiveTelemetryResponse) String() string {
 func (*StreamLiveTelemetryResponse) ProtoMessage() {}
 
 func (x *StreamLiveTelemetryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_geoquerry_v1_telemetry_proto_msgTypes[2]
+	mi := &file_geoquerry_v1_telemetry_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -294,7 +415,7 @@ func (x *StreamLiveTelemetryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamLiveTelemetryResponse.ProtoReflect.Descriptor instead.
 func (*StreamLiveTelemetryResponse) Descriptor() ([]byte, []int) {
-	return file_geoquerry_v1_telemetry_proto_rawDescGZIP(), []int{2}
+	return file_geoquerry_v1_telemetry_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *StreamLiveTelemetryResponse) GetProjectId() string {
@@ -311,11 +432,28 @@ func (x *StreamLiveTelemetryResponse) GetMembers() []*TeamMemberLocation {
 	return nil
 }
 
+func (x *StreamLiveTelemetryResponse) GetSeqId() int64 {
+	if x != nil {
+		return x.SeqId
+	}
+	return 0
+}
+
 var File_geoquerry_v1_telemetry_proto protoreflect.FileDescriptor
 
 const file_geoquerry_v1_telemetry_proto_rawDesc = "" +
 	"\n" +
-	"\x1cgeoquerry/v1/telemetry.proto\x12\fgeoquerry.v1\"\xf3\x02\n" +
+	"\x1cgeoquerry/v1/telemetry.proto\x12\fgeoquerry.v1\"]\n" +
+	"\x13StreamTicketRequest\x12'\n" +
+	"\x0forganization_id\x18\x01 \x01(\tR\x0eorganizationId\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x02 \x01(\tR\tprojectId\"l\n" +
+	"\x14StreamTicketResponse\x12\x16\n" +
+	"\x06ticket\x18\x01 \x01(\tR\x06ticket\x12\x1d\n" +
+	"\n" +
+	"expires_at\x18\x02 \x01(\x03R\texpiresAt\x12\x1d\n" +
+	"\n" +
+	"stream_url\x18\x03 \x01(\tR\tstreamUrl\"\x98\x03\n" +
 	"\x1aStreamLiveTelemetryRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1b\n" +
 	"\tuser_name\x18\x02 \x01(\tR\buserName\x12\x1d\n" +
@@ -330,7 +468,8 @@ const file_geoquerry_v1_telemetry_proto_rawDesc = "" +
 	"\x12battery_percentage\x18\n" +
 	" \x01(\x05R\x11batteryPercentage\x12\x1f\n" +
 	"\vrecorded_at\x18\v \x01(\x03R\n" +
-	"recordedAt\"\xaa\x02\n" +
+	"recordedAt\x12#\n" +
+	"\rstream_ticket\x18\f \x01(\tR\fstreamTicket\"\xaa\x02\n" +
 	"\x12TeamMemberLocation\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1b\n" +
 	"\tuser_name\x18\x02 \x01(\tR\buserName\x12\x1a\n" +
@@ -341,11 +480,15 @@ const file_geoquerry_v1_telemetry_proto_rawDesc = "" +
 	"\x12battery_percentage\x18\a \x01(\x05R\x11batteryPercentage\x12 \n" +
 	"\flast_seen_at\x18\b \x01(\x03R\n" +
 	"lastSeenAt\x12\x1b\n" +
-	"\tis_active\x18\t \x01(\bR\bisActive\"x\n" +
+	"\tis_active\x18\t \x01(\bR\bisActive\"\x8f\x01\n" +
 	"\x1bStreamLiveTelemetryResponse\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12:\n" +
-	"\amembers\x18\x02 \x03(\v2 .geoquerry.v1.TeamMemberLocationR\amembersBLZJgitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerry/v1;geoquerryv1b\x06proto3"
+	"\amembers\x18\x02 \x03(\v2 .geoquerry.v1.TeamMemberLocationR\amembers\x12\x15\n" +
+	"\x06seq_id\x18\x03 \x01(\x03R\x05seqId2\xe0\x01\n" +
+	"\x10TelemetryService\x12\\\n" +
+	"\x13AcquireStreamTicket\x12!.geoquerry.v1.StreamTicketRequest\x1a\".geoquerry.v1.StreamTicketResponse\x12n\n" +
+	"\x13StreamLiveTelemetry\x12(.geoquerry.v1.StreamLiveTelemetryRequest\x1a).geoquerry.v1.StreamLiveTelemetryResponse(\x010\x01BLZJgitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerry/v1;geoquerryv1b\x06proto3"
 
 var (
 	file_geoquerry_v1_telemetry_proto_rawDescOnce sync.Once
@@ -359,16 +502,22 @@ func file_geoquerry_v1_telemetry_proto_rawDescGZIP() []byte {
 	return file_geoquerry_v1_telemetry_proto_rawDescData
 }
 
-var file_geoquerry_v1_telemetry_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_geoquerry_v1_telemetry_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_geoquerry_v1_telemetry_proto_goTypes = []any{
-	(*StreamLiveTelemetryRequest)(nil),  // 0: geoquerry.v1.StreamLiveTelemetryRequest
-	(*TeamMemberLocation)(nil),          // 1: geoquerry.v1.TeamMemberLocation
-	(*StreamLiveTelemetryResponse)(nil), // 2: geoquerry.v1.StreamLiveTelemetryResponse
+	(*StreamTicketRequest)(nil),         // 0: geoquerry.v1.StreamTicketRequest
+	(*StreamTicketResponse)(nil),        // 1: geoquerry.v1.StreamTicketResponse
+	(*StreamLiveTelemetryRequest)(nil),  // 2: geoquerry.v1.StreamLiveTelemetryRequest
+	(*TeamMemberLocation)(nil),          // 3: geoquerry.v1.TeamMemberLocation
+	(*StreamLiveTelemetryResponse)(nil), // 4: geoquerry.v1.StreamLiveTelemetryResponse
 }
 var file_geoquerry_v1_telemetry_proto_depIdxs = []int32{
-	1, // 0: geoquerry.v1.StreamLiveTelemetryResponse.members:type_name -> geoquerry.v1.TeamMemberLocation
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
+	3, // 0: geoquerry.v1.StreamLiveTelemetryResponse.members:type_name -> geoquerry.v1.TeamMemberLocation
+	0, // 1: geoquerry.v1.TelemetryService.AcquireStreamTicket:input_type -> geoquerry.v1.StreamTicketRequest
+	2, // 2: geoquerry.v1.TelemetryService.StreamLiveTelemetry:input_type -> geoquerry.v1.StreamLiveTelemetryRequest
+	1, // 3: geoquerry.v1.TelemetryService.AcquireStreamTicket:output_type -> geoquerry.v1.StreamTicketResponse
+	4, // 4: geoquerry.v1.TelemetryService.StreamLiveTelemetry:output_type -> geoquerry.v1.StreamLiveTelemetryResponse
+	3, // [3:5] is the sub-list for method output_type
+	1, // [1:3] is the sub-list for method input_type
 	1, // [1:1] is the sub-list for extension type_name
 	1, // [1:1] is the sub-list for extension extendee
 	0, // [0:1] is the sub-list for field type_name
@@ -385,9 +534,9 @@ func file_geoquerry_v1_telemetry_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_geoquerry_v1_telemetry_proto_rawDesc), len(file_geoquerry_v1_telemetry_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   5,
 			NumExtensions: 0,
-			NumServices:   0,
+			NumServices:   1,
 		},
 		GoTypes:           file_geoquerry_v1_telemetry_proto_goTypes,
 		DependencyIndexes: file_geoquerry_v1_telemetry_proto_depIdxs,

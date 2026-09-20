@@ -33,20 +33,24 @@ import (
 	"gitlab.com/austin4403/geoquerry/backend/internal/auth"
 	"gitlab.com/austin4403/geoquerry/backend/internal/config"
 	"gitlab.com/austin4403/geoquerry/backend/internal/db"
+	"gitlab.com/austin4403/geoquerry/backend/internal/mpesa"
+	"gitlab.com/austin4403/geoquerry/backend/internal/paystack"
+	"gitlab.com/austin4403/geoquerry/backend/internal/r2"
 	"gitlab.com/austin4403/geoquerry/backend/internal/sync"
 	"gitlab.com/austin4403/geoquerry/backend/internal/telemetry"
 	geoquerryv1connect "gitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerry/v1/geoquerryv1connect"
 )
 
-// geoquerryAPI composes the two half-services into the ONE handler type the
-// generated connect code expects. Embedding a *sync.Service (contributing
-// PushSyncQueue + PullProjectData) and a *telemetry.Handler (contributing
-// StreamLiveTelemetry) is unambiguous because each implements exactly its
-// own RPCs — see the comments on those types for why neither embeds the
-// generated Unimplemented base.
+// geoquerryAPI composes the half-services into the ONE handler type the
+// generated connect code expects. Each embedded type implements exactly
+// its own RPCs: *sync.Service (PushSyncQueue + PullProjectData),
+// *telemetry.Handler (StreamLiveTelemetry), *r2.Service (CreatePhotoUpload).
+// See the comments on those types for why none embeds the generated
+// Unimplemented base (spoiler: ambiguous method promotion).
 type geoquerryAPI struct {
 	*sync.Service
 	*telemetry.Handler
+	*r2.UploadService
 }
 
 // Compile-time proof the composition satisfies the full handler interface.
@@ -89,9 +93,24 @@ func run() error {
 	hub := telemetry.NewHub(cfg.TelemetryMemberTTL, cfg.TelemetryMemberTTL/4)
 	defer hub.Close()
 
+	// Photo uploads: the UploadService is always embedded; with R2 unset
+	// it is nil-safe and answers CodeUnimplemented, so deployments without
+	// object storage degrade gracefully instead of erroring.
+	r2Ready := cfg.R2AccountID != "" && cfg.R2AccessKeyID != "" &&
+		cfg.R2SecretAccessKey != "" && cfg.R2Bucket != ""
+	var uploads *r2.UploadService
+	if r2Ready {
+		uploads = r2.NewService(r2.NewPresigner(cfg))
+		log.Printf("server: R2 photo uploads enabled (bucket %s, ttl %s)",
+			cfg.R2Bucket, cfg.PhotoPutTTL)
+	} else {
+		uploads = r2.NewService(nil)
+	}
+
 	api := geoquerryAPI{
-		Service: sync.NewService(pool),
-		Handler: telemetry.NewHandler(hub),
+		Service:       sync.NewService(pool),
+		Handler:       telemetry.NewHandler(hub),
+		UploadService: uploads,
 	}
 
 	mux := http.NewServeMux()
@@ -139,6 +158,25 @@ func run() error {
 	var protocols http.Protocols
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
+
+	// --- Payment webhooks (mounted ONLY when their credentials exist) ----
+	// These are plain HTTP endpoints — NOT connect RPCs — so the API-key
+	// interceptor does not apply. They carry their own auth instead:
+	// Daraja's secret-path token, Paystack's HMAC-SHA512 signature.
+	if cfg.MPesaEnabled {
+		// Path embeds the high-entropy token; a wrong token is a plain 404
+		// (an attacker cannot even confirm the endpoint exists).
+		mux.HandleFunc("POST /webhooks/mpesa/{secret}", mpesa.WebhookHandler(cfg.MPesaWebhookToken))
+		log.Printf("server: M-Pesa webhook mounted (%s)", cfg.MPesaEnv)
+	}
+	if cfg.PaystackEnabled {
+		ps := paystack.New(cfg.PaystackKey, "")
+		// The webhook re-verifies every charge against Paystack's API
+		// before trusting it — the webhook says "look", verification
+		// says "paid".
+		mux.Handle("POST /webhooks/paystack", paystack.WebhookHandler(cfg.PaystackKey, ps.VerifyTransaction))
+		log.Printf("server: Paystack webhook mounted")
+	}
 
 	// Middleware stack, outermost first: logging, then the request body
 	// cap, then CORS, then routing.

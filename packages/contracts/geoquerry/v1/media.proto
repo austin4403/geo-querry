@@ -1,0 +1,46 @@
+// media.proto — photo upload contract for Cloudflare R2.
+//
+// WHY PRESIGNED URLS (device -> R2 direct)?
+// Field photos are multi-megabyte; routing them through the Go API (on a
+// 512 MB Koyeb Nano) would burn memory, bandwidth and time. Instead the
+// client asks the API for a short-lived presigned PUT URL and uploads
+// DIRECTLY to Cloudflare R2 — zero egress fees, nothing binary ever
+// touches the API server. The DB only ever stores the object key.
+syntax = "proto3";
+
+package geoquerry.v1;
+
+option go_package = "gitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerry/v1;geoquerryv1";
+
+message CreatePhotoUploadRequest {
+  // The project and (optional) station scope the photo to, used to build a
+  // tidy object key: photos/{project}/{station|unfiled}/{uuid}.{ext}
+  string project_id = 1;
+  string station_id = 2; // optional: photos may be taken before a station exists
+
+  // Original file name — used ONLY to infer a safe extension (.jpg etc).
+  string file_name = 3;
+
+  // Client-declared MIME type; the server enforces an image allowlist so a
+  // presigned URL can never be used to plant arbitrary content.
+  string content_type = 4;
+
+  // Client-declared size; the server caps it so the URL can't be used for
+  // arbitrarily large uploads.
+  int64 content_length_bytes = 5;
+}
+
+message CreatePhotoUploadResponse {
+  // PUT this URL directly to R2 with the SAME Content-Type header within
+  // the expiry window. No other headers are required (signature covers
+  // them), which is what makes it work from any HTTP client.
+  string upload_url = 1;
+
+  // The object key. After a successful upload, the client stores THIS
+  // string in RockSample.photo_r2_keys / Vegetation.photo_r2_keys and it
+  // syncs like any other field edit.
+  string r2_key = 2;
+
+  // Unix ms after which the URL stops working (default 5 minutes).
+  int64 expires_at = 3;
+}

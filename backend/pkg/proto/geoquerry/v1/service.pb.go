@@ -26,29 +26,34 @@ var File_geoquerry_v1_service_proto protoreflect.FileDescriptor
 
 const file_geoquerry_v1_service_proto_rawDesc = "" +
 	"\n" +
-	"\x1ageoquerry/v1/service.proto\x12\fgeoquerry.v1\x1a\x17geoquerry/v1/sync.proto\x1a\x1cgeoquerry/v1/telemetry.proto2\xc0\x02\n" +
+	"\x1ageoquerry/v1/service.proto\x12\fgeoquerry.v1\x1a\x18geoquerry/v1/media.proto\x1a\x17geoquerry/v1/sync.proto\x1a\x1cgeoquerry/v1/telemetry.proto2\xa6\x03\n" +
 	"\x14GeoquerrySyncService\x12X\n" +
 	"\rPushSyncQueue\x12\".geoquerry.v1.PushSyncQueueRequest\x1a#.geoquerry.v1.PushSyncQueueResponse\x12^\n" +
 	"\x0fPullProjectData\x12$.geoquerry.v1.PullProjectDataRequest\x1a%.geoquerry.v1.PullProjectDataResponse\x12n\n" +
-	"\x13StreamLiveTelemetry\x12(.geoquerry.v1.StreamLiveTelemetryRequest\x1a).geoquerry.v1.StreamLiveTelemetryResponse(\x010\x01BLZJgitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerry/v1;geoquerryv1b\x06proto3"
+	"\x13StreamLiveTelemetry\x12(.geoquerry.v1.StreamLiveTelemetryRequest\x1a).geoquerry.v1.StreamLiveTelemetryResponse(\x010\x01\x12d\n" +
+	"\x11CreatePhotoUpload\x12&.geoquerry.v1.CreatePhotoUploadRequest\x1a'.geoquerry.v1.CreatePhotoUploadResponseBLZJgitlab.com/austin4403/geoquerry/backend/pkg/proto/geoquerry/v1;geoquerryv1b\x06proto3"
 
 var file_geoquerry_v1_service_proto_goTypes = []any{
 	(*PushSyncQueueRequest)(nil),        // 0: geoquerry.v1.PushSyncQueueRequest
 	(*PullProjectDataRequest)(nil),      // 1: geoquerry.v1.PullProjectDataRequest
 	(*StreamLiveTelemetryRequest)(nil),  // 2: geoquerry.v1.StreamLiveTelemetryRequest
-	(*PushSyncQueueResponse)(nil),       // 3: geoquerry.v1.PushSyncQueueResponse
-	(*PullProjectDataResponse)(nil),     // 4: geoquerry.v1.PullProjectDataResponse
-	(*StreamLiveTelemetryResponse)(nil), // 5: geoquerry.v1.StreamLiveTelemetryResponse
+	(*CreatePhotoUploadRequest)(nil),    // 3: geoquerry.v1.CreatePhotoUploadRequest
+	(*PushSyncQueueResponse)(nil),       // 4: geoquerry.v1.PushSyncQueueResponse
+	(*PullProjectDataResponse)(nil),     // 5: geoquerry.v1.PullProjectDataResponse
+	(*StreamLiveTelemetryResponse)(nil), // 6: geoquerry.v1.StreamLiveTelemetryResponse
+	(*CreatePhotoUploadResponse)(nil),   // 7: geoquerry.v1.CreatePhotoUploadResponse
 }
 var file_geoquerry_v1_service_proto_depIdxs = []int32{
 	0, // 0: geoquerry.v1.GeoquerrySyncService.PushSyncQueue:input_type -> geoquerry.v1.PushSyncQueueRequest
 	1, // 1: geoquerry.v1.GeoquerrySyncService.PullProjectData:input_type -> geoquerry.v1.PullProjectDataRequest
 	2, // 2: geoquerry.v1.GeoquerrySyncService.StreamLiveTelemetry:input_type -> geoquerry.v1.StreamLiveTelemetryRequest
-	3, // 3: geoquerry.v1.GeoquerrySyncService.PushSyncQueue:output_type -> geoquerry.v1.PushSyncQueueResponse
-	4, // 4: geoquerry.v1.GeoquerrySyncService.PullProjectData:output_type -> geoquerry.v1.PullProjectDataResponse
-	5, // 5: geoquerry.v1.GeoquerrySyncService.StreamLiveTelemetry:output_type -> geoquerry.v1.StreamLiveTelemetryResponse
-	3, // [3:6] is the sub-list for method output_type
-	0, // [0:3] is the sub-list for method input_type
+	3, // 3: geoquerry.v1.GeoquerrySyncService.CreatePhotoUpload:input_type -> geoquerry.v1.CreatePhotoUploadRequest
+	4, // 4: geoquerry.v1.GeoquerrySyncService.PushSyncQueue:output_type -> geoquerry.v1.PushSyncQueueResponse
+	5, // 5: geoquerry.v1.GeoquerrySyncService.PullProjectData:output_type -> geoquerry.v1.PullProjectDataResponse
+	6, // 6: geoquerry.v1.GeoquerrySyncService.StreamLiveTelemetry:output_type -> geoquerry.v1.StreamLiveTelemetryResponse
+	7, // 7: geoquerry.v1.GeoquerrySyncService.CreatePhotoUpload:output_type -> geoquerry.v1.CreatePhotoUploadResponse
+	4, // [4:8] is the sub-list for method output_type
+	0, // [0:4] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -59,6 +64,7 @@ func file_geoquerry_v1_service_proto_init() {
 	if File_geoquerry_v1_service_proto != nil {
 		return
 	}
+	file_geoquerry_v1_media_proto_init()
 	file_geoquerry_v1_sync_proto_init()
 	file_geoquerry_v1_telemetry_proto_init()
 	type x struct{}
