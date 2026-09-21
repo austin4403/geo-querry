@@ -1,20 +1,24 @@
 import { NextResponse } from "next/server";
-import { getSession, isSudoActive } from "@/lib/session";
+import { getCurrentUser, getSudoState, isSudoActive } from "@/lib/session";
 
 export async function GET() {
-  const session = await getSession();
-  if (!session) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ authenticated: false, session: null, isSudo: false });
   }
+
+  const sudo = await getSudoState();
+  const sudoActive = isSudoActive(sudo, user.id);
 
   return NextResponse.json({
     authenticated: true,
     session: {
-      userId: session.userId,
-      email: session.email,
-      authTime: session.authTime,
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      authTime: user.authTime,
     },
-    isSudo: isSudoActive(session),
-    sudoExpiresAt: session.sudoExpiresAt || null,
+    isSudo: sudoActive,
+    sudoExpiresAt: sudoActive && sudo ? sudo.sudoExpiresAt : null,
   });
 }

@@ -1,11 +1,19 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { auth } from "@/lib/auth/server";
 
-const SESSION_COOKIE_NAME =
-  process.env.NODE_ENV === "production"
-    ? "__Host-geoquerry_session"
-    : "geoquerry_session";
+// Next.js 16 renamed middleware to proxy; @neondatabase/auth docs use the
+// proxy.ts file for route protection on Next 16+.
+const neonAuthMiddleware = auth.middleware({ loginUrl: "/login" });
 
-export function middleware(request: NextRequest) {
+const PROTECTED_PREFIXES = ["/dashboard"];
+
+function isProtected(pathname: string): boolean {
+  return PROTECTED_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+}
+
+export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // 1. CSRF verification on state-changing API requests
@@ -32,22 +40,24 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // 2. Authentication boundary for /dashboard
-  if (pathname.startsWith("/dashboard")) {
-    const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME);
-    if (!sessionCookie?.value) {
-      const loginUrl = new URL("/login", request.url);
-      loginUrl.searchParams.set("from", pathname);
-      return NextResponse.redirect(loginUrl);
-    }
-  }
-
-  const response = NextResponse.next();
+  // 2. Authentication boundary for protected areas, enforced by the Neon Auth
+  // middleware (session resolution + cookie refresh; redirects unauthenticated
+  // requests to /login). Other paths stay public.
+  const response = isProtected(pathname)
+    ? await neonAuthMiddleware(request)
+    : NextResponse.next();
 
   // 3. Mandatory Security Headers per ADR-0001 / ADR-0005 & Security Assessment
+  // React DevTools / Turbopack requires 'unsafe-eval' in non-production environments
+  // for reconstructing callstacks and debugging. Production strictly omits it.
+  const isDev = process.env.NODE_ENV !== "production";
+  const scriptSrc = isDev
+    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+    : "script-src 'self' 'unsafe-inline'";
+
   const cspDirectives = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline'",
+    scriptSrc,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.tile.opentopomap.org https://*.basemaps.cartocdn.com",
     "font-src 'self'",
@@ -70,8 +80,8 @@ export function middleware(request: NextRequest) {
     "max-age=63072000; includeSubDomains; preload"
   );
 
-  // 4. Authenticated Cache Isolation
-  if (pathname.startsWith("/dashboard") || pathname.startsWith("/api")) {
+  // Authenticated state & API isolation
+  if (pathname.startsWith("/api/")) {
     response.headers.set("Cache-Control", "private, no-store, max-age=0, must-revalidate");
   }
 
@@ -81,11 +91,8 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
+     * Match all request paths except for static files and image optimization
      */
-    "/((?!_next/static|_next/image|favicon.ico).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

@@ -1,249 +1,204 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import React, { useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  Lock,
+  Mail,
+  Loader2,
+  Database,
+  Eye,
+  EyeOff,
+  User,
+} from "lucide-react";
+import { GeoQuerryLogo } from "@/components/icons/GeoQuerryLogo";
 import { authClient } from "@/lib/auth/client";
-import { Zap, ShieldCheck, ArrowRight, UserCheck, CheckCircle2, Lock, Mail, Github } from "lucide-react";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
-  const [email, setEmail] = useState("chief.geologist@geoquerry.local");
+  const searchParams = useSearchParams();
+  const redirect = searchParams.get("redirect") || "/dashboard";
+
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [activeTab, setActiveTab] = useState<"quick" | "credentials">("quick");
-  const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSignIn = async (targetEmail: string, targetPassword?: string) => {
-    setIsLoading(true);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError(null);
+    setLoading(true);
 
-    const result = await authClient.signIn.email({
-      email: targetEmail,
-      password: targetPassword,
-    });
+    const { error: authError } = isSignUp
+      ? await authClient.signUp.email({ email, password, name: fullName })
+      : await authClient.signIn.email({ email, password });
 
-    if (result.error) {
-      setError(result.error.message);
-      setIsLoading(false);
+    if (authError) {
+      setError(authError.message || "Authentication failed. Please check credentials.");
+      setLoading(false);
       return;
     }
 
-    router.push("/dashboard");
+    router.push(redirect);
     router.refresh();
   };
 
-  const handleCredentialsSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    handleSignIn(email, password);
+  const handleNeonOAuth = async () => {
+    setError(null);
+    setLoading(true);
+
+    const { error: socialError } = await authClient.signIn.social({
+      provider: "google",
+      callbackURL: redirect,
+    });
+
+    if (socialError) {
+      setError(socialError.message || "Neon OAuth initialization failed.");
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4 bg-[#09090b] text-[#f4f4f5]">
-      {/* Background ambient glow */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[600px] h-[350px] bg-[#00e599]/10 blur-[120px] rounded-full" />
+    <div className="max-w-md w-full space-y-8 relative z-10">
+      {/* Header Branding */}
+      <div className="text-center space-y-3">
+        <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-blue-600/15 border border-blue-500/30 text-blue-400 shadow-lg shadow-blue-500/10">
+          <GeoQuerryLogo className="w-8 h-8" />
+        </div>
+        <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight font-mono">
+          Geo<span className="text-blue-400">Querry</span>
+        </h1>
+        <p className="text-xs text-zinc-400">
+          {isSignUp ? "Create your geological survey account" : "Sign in to access GIS field mapping & project datasets"}
+        </p>
       </div>
 
-      <Card className="relative w-full max-w-md border-[#27272a] bg-[#121215] shadow-2xl backdrop-blur-md">
-        <CardHeader className="text-center space-y-3 pb-3">
-          {/* Neon Logo Badge */}
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#00e599]/15 border border-[#00e599]/40 text-[#00e599] shadow-[0_0_25px_rgba(0,229,153,0.25)]">
-            <Zap className="h-7 w-7 fill-[#00e599]" />
+      {/* Main Card */}
+      <div className="p-8 rounded-3xl bg-zinc-900/90 border border-zinc-800 shadow-2xl backdrop-blur-md space-y-6">
+        {error && (
+          <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+            {error}
           </div>
+        )}
 
-          <div className="space-y-1">
-            <div className="flex items-center justify-center gap-2">
-              <CardTitle className="text-2xl font-bold tracking-tight text-white">Neon Auth</CardTitle>
-              <Badge variant="outline" className="border-[#00e599]/40 text-[#00e599] bg-[#00e599]/10 text-[10px] uppercase tracking-wider font-semibold">
-                Connected
-              </Badge>
-            </div>
-            <CardDescription className="text-sm text-[#a1a1aa]">
-              Managed authentication in the Neon backend for apps and agents
-            </CardDescription>
-          </div>
+        {/* Direct Neon Auth / OAuth Button */}
+        <button
+          type="button"
+          onClick={handleNeonOAuth}
+          disabled={loading}
+          className="w-full py-3 px-4 rounded-xl bg-zinc-950 hover:bg-zinc-800 border border-emerald-500/30 hover:border-emerald-500/60 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm group disabled:opacity-60"
+        >
+          <Database className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+          Continue with Neon Auth (Google / OAuth)
+        </button>
 
-          {/* Mode Switcher */}
-          <div className="flex rounded-lg bg-[#18181b] p-1 border border-[#27272a] mt-2">
-            <button
-              type="button"
-              onClick={() => setActiveTab("quick")}
-              className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${
-                activeTab === "quick"
-                  ? "bg-[#27272a] text-[#00e599] shadow-xs"
-                  : "text-[#71717a] hover:text-[#a1a1aa]"
-              }`}
-            >
-              1-Click Access
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("credentials")}
-              className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${
-                activeTab === "credentials"
-                  ? "bg-[#27272a] text-[#00e599] shadow-xs"
-                  : "text-[#71717a] hover:text-[#a1a1aa]"
-              }`}
-            >
-              Email & Password
-            </button>
-          </div>
-        </CardHeader>
+        <div className="flex items-center gap-3">
+          <div className="h-px bg-zinc-800 flex-1" />
+          <span className="text-[10px] text-zinc-500 uppercase font-mono">or email credentials</span>
+          <div className="h-px bg-zinc-800 flex-1" />
+        </div>
 
-        <CardContent className="space-y-4">
-          {error && (
-            <div
-              role="alert"
-              className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400"
-            >
-              {error}
-            </div>
-          )}
-
-          {activeTab === "quick" ? (
-            <div className="space-y-4">
-              {/* Primary 1-Click Action */}
-              <div className="space-y-2">
-                <Button
-                  type="button"
-                  variant="primary"
-                  disabled={isLoading}
-                  onClick={() => handleSignIn("chief.geologist@geoquerry.local")}
-                  className="w-full h-11 bg-[#00e599] hover:bg-[#00c984] text-[#09090b] font-semibold text-sm transition-all shadow-[0_0_20px_rgba(0,229,153,0.3)] flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <Zap className="h-4 w-4 fill-current" />
-                  {isLoading ? "Signing in with Neon..." : "Continue with Neon Auth"}
-                  <ArrowRight className="h-4 w-4 ml-auto opacity-70" />
-                </Button>
-                <p className="text-[11px] text-center text-[#71717a]">
-                  Instant access to your exploration tenant workspace
-                </p>
-              </div>
-
-              {/* Social Login Buttons */}
-              <div className="space-y-2">
-                <div className="relative flex items-center justify-center">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t border-[#27272a]" />
-                  </div>
-                  <span className="relative bg-[#121215] px-3 text-[10px] uppercase tracking-wider text-[#71717a]">
-                    or connect via OAuth
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={isLoading}
-                    onClick={() => handleSignIn("github.user@geoquerry.local")}
-                    className="h-9 border-[#27272a] hover:border-[#3f3f46] hover:bg-[#18181b] text-xs text-[#e4e4e7] flex items-center justify-center gap-2"
-                  >
-                    <Github className="h-3.5 w-3.5" />
-                    GitHub
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={isLoading}
-                    onClick={() => handleSignIn("google.user@geoquerry.local")}
-                    className="h-9 border-[#27272a] hover:border-[#3f3f46] hover:bg-[#18181b] text-xs text-[#e4e4e7] flex items-center justify-center gap-2"
-                  >
-                    <Mail className="h-3.5 w-3.5 text-red-400" />
-                    Google
-                  </Button>
-                </div>
-              </div>
-
-              {/* Personas */}
-              <div className="pt-2 border-t border-[#27272a]/60 space-y-2">
-                <div className="text-[11px] font-semibold text-[#a1a1aa] flex items-center justify-between">
-                  <span>Fast Switch Workspace Role:</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleSignIn("chief.geologist@geoquerry.local")}
-                    className="flex items-center gap-2 p-2 rounded-md bg-[#18181b] border border-[#27272a] hover:border-[#00e599]/50 text-left transition-colors cursor-pointer group"
-                  >
-                    <UserCheck className="h-3.5 w-3.5 text-[#00e599] shrink-0" />
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-medium text-white truncate group-hover:text-[#00e599]">Chief Geologist</div>
-                      <div className="text-[10px] text-[#71717a] truncate">Tenant Admin</div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleSignIn("field.geologist@geoquerry.local")}
-                    className="flex items-center gap-2 p-2 rounded-md bg-[#18181b] border border-[#27272a] hover:border-[#00e599]/50 text-left transition-colors cursor-pointer group"
-                  >
-                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-400 shrink-0" />
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-medium text-white truncate group-hover:text-blue-300">Field Surveyor</div>
-                      <div className="text-[10px] text-[#71717a] truncate">Telemetry & Sync</div>
-                    </div>
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <form onSubmit={handleCredentialsSubmit} className="space-y-3">
-              <div className="space-y-1.5">
-                <label htmlFor="email" className="text-xs font-medium text-[#d4d4d8] flex items-center gap-1.5">
-                  <Mail className="h-3.5 w-3.5 text-[#71717a]" />
-                  <span>Neon Account Email</span>
-                </label>
-                <Input
-                  id="email"
-                  type="email"
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {isSignUp && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-zinc-300">Full Name</label>
+              <div className="relative">
+                <User className="w-4 h-4 text-zinc-500 absolute left-3.5 top-3" />
+                <input
+                  type="text"
                   required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="geologist@exploration.com"
-                  className="h-10 bg-[#18181b] border-[#27272a] text-white placeholder:text-[#52525b] focus:border-[#00e599] focus:ring-1 focus:ring-[#00e599]"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="e.g. Austin Odhiambo"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-white text-xs focus:outline-none focus:border-blue-500"
                 />
               </div>
-
-              <div className="space-y-1.5">
-                <label htmlFor="password" className="text-xs font-medium text-[#d4d4d8] flex items-center gap-1.5">
-                  <Lock className="h-3.5 w-3.5 text-[#71717a]" />
-                  <span>Password</span>
-                </label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••••••"
-                  className="h-10 bg-[#18181b] border-[#27272a] text-white placeholder:text-[#52525b] focus:border-[#00e599] focus:ring-1 focus:ring-[#00e599]"
-                />
-              </div>
-
-              <Button
-                type="submit"
-                variant="primary"
-                disabled={isLoading}
-                className="w-full h-10 bg-[#00e599] hover:bg-[#00c984] text-[#09090b] font-semibold text-xs mt-2"
-              >
-                {isLoading ? "Signing in..." : "Sign In to Neon Auth"}
-              </Button>
-            </form>
+            </div>
           )}
 
-          {/* Neon Security Assurance Footer */}
-          <div className="rounded-lg border border-[#27272a] bg-[#18181b]/50 p-3 text-xs text-[#a1a1aa] flex items-start space-x-2.5">
-            <ShieldCheck className="h-4 w-4 text-[#00e599] shrink-0 mt-0.5" />
-            <span className="text-[11px] leading-relaxed">
-              <strong>Neon Database Auth:</strong> Auth schema (<code className="text-[#00e599]">neon_auth</code>) branches directly with PostGIS data branches, with mTLS Ed25519 token propagation to Go Core.
-            </span>
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-zinc-300">Work Email</label>
+            <div className="relative">
+              <Mail className="w-4 h-4 text-zinc-500 absolute left-3.5 top-3" />
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="geologist@miningcorp.com"
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-white text-xs focus:outline-none focus:border-blue-500"
+              />
+            </div>
           </div>
-        </CardContent>
-      </Card>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-zinc-300">Password</label>
+            <div className="relative">
+              <Lock className="w-4 h-4 text-zinc-500 absolute left-3.5 top-3" />
+              <input
+                type={showPassword ? "text" : "password"}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-white text-xs focus:outline-none focus:border-blue-500"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-200 transition-colors p-1"
+                title={showPassword ? "Hide password" : "Show password"}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-600/20 disabled:opacity-60"
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : isSignUp ? "Create Account & Onboard" : "Sign In to GeoQuerry"}
+          </button>
+        </form>
+
+        {/* Toggle between Sign in and Sign up */}
+        <div className="text-center pt-2">
+          <button
+            type="button"
+            onClick={() => setIsSignUp(!isSignUp)}
+            className="text-xs text-blue-400 hover:underline font-semibold"
+          >
+            {isSignUp ? "Already have an account? Sign In" : "Need an exploration account? Sign Up"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <div className="min-h-screen w-full bg-zinc-950 flex flex-col justify-center items-center px-4 py-12 relative overflow-hidden">
+      {/* Background Decorative Gradient Blobs */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-600/10 blur-[120px] rounded-full pointer-events-none" />
+      <div className="absolute bottom-1/4 left-1/3 -translate-x-1/2 w-[350px] h-[350px] bg-emerald-600/5 blur-[100px] rounded-full pointer-events-none" />
+
+      <Suspense
+        fallback={
+          <div className="flex items-center justify-center p-12">
+            <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+          </div>
+        }
+      >
+        <LoginForm />
+      </Suspense>
     </div>
   );
 }

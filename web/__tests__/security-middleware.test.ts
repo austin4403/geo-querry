@@ -1,16 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { middleware } from "@/middleware";
+import proxy from "@/proxy";
 import { NextRequest } from "next/server";
 
-describe("Security Middleware & Response Headers", () => {
-  it("attaches strict Content-Security-Policy, HSTS, and frame protection", () => {
-    const req = new NextRequest("http://localhost:3001/dashboard/stations", {
-      headers: {
-        cookie: "geoquerry_session=eyJ1c2VySWQiOiJ1c3JfMSJ9",
-      },
-    });
+describe("Security Proxy & Response Headers", () => {
+  it("attaches strict Content-Security-Policy, HSTS, and frame protection", async () => {
+    const req = new NextRequest("http://localhost:3001/api/auth/session");
 
-    const res = middleware(req);
+    const res = await proxy(req);
 
     // Frame ancestors protection (clickjacking prevention)
     const csp = res.headers.get("Content-Security-Policy");
@@ -24,11 +20,11 @@ describe("Security Middleware & Response Headers", () => {
     expect(res.headers.get("Strict-Transport-Security")).toContain("max-age=63072000");
     expect(res.headers.get("Referrer-Policy")).toBe("strict-origin-when-cross-origin");
 
-    // Authenticated cache isolation
+    // Authenticated cache isolation on API paths
     expect(res.headers.get("Cache-Control")).toBe("private, no-store, max-age=0, must-revalidate");
   });
 
-  it("rejects cross-origin mutations with 403 Forbidden (CSRF protection)", () => {
+  it("rejects cross-origin mutations with 403 Forbidden (CSRF protection)", async () => {
     const req = new NextRequest("http://localhost:3001/api/billing/mpesa", {
       method: "POST",
       headers: {
@@ -37,11 +33,11 @@ describe("Security Middleware & Response Headers", () => {
       },
     });
 
-    const res = middleware(req);
+    const res = await proxy(req);
     expect(res.status).toBe(403);
   });
 
-  it("permits same-origin mutation requests", () => {
+  it("permits same-origin mutation requests", async () => {
     const req = new NextRequest("http://localhost:3001/api/auth/session", {
       method: "POST",
       headers: {
@@ -50,7 +46,7 @@ describe("Security Middleware & Response Headers", () => {
       },
     });
 
-    const res = middleware(req);
+    const res = await proxy(req);
     expect(res.status).toBe(200);
   });
 });

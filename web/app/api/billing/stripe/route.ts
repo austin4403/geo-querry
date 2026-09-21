@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import crypto from "node:crypto";
-import { getSession } from "@/lib/session";
+import { getCurrentUser } from "@/lib/session";
 
 export async function POST(req: Request) {
   try {
-    const session = await getSession();
-    if (!session) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized: active session required" }, { status: 401 });
     }
 

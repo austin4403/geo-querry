@@ -1,46 +1,64 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { authClient } from "@/lib/auth/client";
+import { describe, it, expect } from "vitest";
+import {
+  signSudoToken,
+  verifySudoToken,
+  isSudoActive,
+  sudoExpiryFrom,
+  type SudoState,
+} from "@/lib/sudo";
 
-describe("Neon Auth Client Integration", () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
+const SECRET = "unit-test-cookie-secret-0123456789abcdef0123456789abcdef";
+const STATE: SudoState = {
+  userId: "neon-user-123",
+  sudoExpiresAt: Math.floor(Date.now() / 1000) + 900,
+};
+
+describe("Sudo Elevation Cookie (ADR-0005)", () => {
+  it("round-trips a signed token", () => {
+    const token = signSudoToken(STATE, SECRET);
+    const verified = verifySudoToken(token, SECRET);
+
+    expect(verified).toEqual(STATE);
   });
 
-  it("successfully calls Neon Auth email sign-in endpoint", async () => {
-    const mockResponse = {
-      success: true,
-      user: { id: "usr_chief_geologist", email: "chief.geologist@geoquerry.local" },
-      session: { id: "sess_123", expiresAt: "2026-10-06T00:00:00.000Z" },
-    };
+  it("rejects a tampered payload", () => {
+    const token = signSudoToken(STATE, SECRET);
+    const [payload] = token.split(".");
+    // Flip the userId inside the payload without re-signing
+    const forged = Buffer.from(
+      JSON.stringify({ userId: "attacker", sudoExpiresAt: STATE.sudoExpiresAt })
+    ).toString("base64url");
+    const tampered = token.replace(payload, forged);
 
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => mockResponse,
-    });
-
-    const result = await authClient.signIn.email({
-      email: "chief.geologist@geoquerry.local",
-    });
-
-    expect(global.fetch).toHaveBeenCalledWith("/api/auth/sign-in/email", expect.objectContaining({
-      method: "POST",
-    }));
-    expect(result.error).toBeNull();
-    expect(result.data).toEqual(mockResponse);
+    expect(verifySudoToken(tampered, SECRET)).toBeNull();
   });
 
-  it("handles authentication failures gracefully", async () => {
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      json: async () => ({ error: "Invalid credentials" }),
-    });
+  it("rejects a token signed with a different secret", () => {
+    const token = signSudoToken(STATE, "another-secret-with-at-least-32-chars-aaaa");
 
-    const result = await authClient.signIn.email({
-      email: "unknown@geoquerry.local",
-      password: "wrong",
-    });
+    expect(verifySudoToken(token, SECRET)).toBeNull();
+  });
 
-    expect(result.data).toBeNull();
-    expect(result.error?.message).toBe("Invalid credentials");
+  it("rejects malformed tokens", () => {
+    expect(verifySudoToken("garbage", SECRET)).toBeNull();
+    expect(verifySudoToken("a.b.c", SECRET)).toBeNull();
+  });
+
+  it("isSudoActive binds the elevation to the authenticated user", () => {
+    expect(isSudoActive(STATE, "neon-user-123")).toBe(true);
+    // Cross-user replay: the elevation must not apply to another principal
+    expect(isSudoActive(STATE, "neon-user-456")).toBe(false);
+    expect(isSudoActive(null, "neon-user-123")).toBe(false);
+  });
+
+  it("isSudoActive expires after the TTL", () => {
+    const expired: SudoState = { userId: STATE.userId, sudoExpiresAt: 1 };
+
+    expect(isSudoActive(expired, STATE.userId)).toBe(false);
+  });
+
+  it("issues 15-minute elevations", () => {
+    const now = Math.floor(Date.now() / 1000);
+    expect(sudoExpiryFrom(now)).toBe(now + 900);
   });
 });

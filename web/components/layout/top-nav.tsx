@@ -3,14 +3,14 @@ import Link from "next/link";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Shield, Radio } from "lucide-react";
-import { UserSession } from "@/lib/session";
+import { CurrentUser } from "@/lib/session";
 
 interface TopNavProps {
-  session: UserSession | null;
+  user: CurrentUser | null;
   hasActiveSudo?: boolean;
 }
 
-export function TopNav({ session, hasActiveSudo = false }: TopNavProps) {
+export function TopNav({ user, hasActiveSudo = false }: TopNavProps) {
   return (
     <header className="sticky top-0 z-40 w-full border-b border-[var(--border)] bg-[var(--surface-card)]/90 backdrop-blur-md">
       <div className="flex h-14 items-center justify-between px-4 sm:px-6">
@@ -44,10 +44,10 @@ export function TopNav({ session, hasActiveSudo = false }: TopNavProps) {
 
           <ThemeToggle />
 
-          {session ? (
+          {user ? (
             <div className="flex items-center space-x-2 text-xs">
               <span className="text-[var(--foreground-muted)] hidden sm:inline">
-                {session.email}
+                {user.email}
               </span>
               <form action="/api/auth/logout" method="POST">
                 <button

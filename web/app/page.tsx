@@ -4,7 +4,7 @@ import { TopNav } from "@/components/layout/top-nav";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { getSession } from "@/lib/session";
+import { getCurrentUser } from "@/lib/session";
 import {
   Compass,
   MapPin,
@@ -16,11 +16,11 @@ import {
 } from "lucide-react";
 
 export default async function HomePage() {
-  const session = await getSession();
+  const user = await getCurrentUser();
 
   return (
     <div className="flex min-h-screen flex-col">
-      <TopNav session={session} />
+      <TopNav user={user} />
 
       <main id="main-content" className="flex-1 px-4 py-8 sm:px-8 max-w-7xl mx-auto w-full">
         {/* Workstation Header */}
@@ -44,7 +44,7 @@ export default async function HomePage() {
           </div>
 
           <div className="flex items-center space-x-3">
-            {session ? (
+            {user ? (
               <Link href="/dashboard">
                 <Button size="lg" className="flex items-center space-x-2">
                   <Compass className="h-4 w-4" />

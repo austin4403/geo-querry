@@ -1,4 +1,4 @@
-import { getSession } from "./session";
+import { getCurrentUser, getSudoState, isSudoActive } from "./session";
 import { createInternalAssertion } from "./assertion";
 
 const BACKEND_URL =
@@ -10,17 +10,18 @@ export async function callBackendRPC<TReq, TRes>(
   procedure: string,
   req: TReq
 ): Promise<TRes> {
-  const session = await getSession();
+  const user = await getCurrentUser();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "Connect-Protocol-Version": "1",
   };
 
-  if (session) {
+  if (user) {
+    const sudo = await getSudoState();
     const assertion = createInternalAssertion({
-      sub: session.userId,
-      authTime: session.authTime,
-      sudoExpiresAt: session.sudoExpiresAt,
+      sub: user.id,
+      authTime: user.authTime,
+      sudoExpiresAt: isSudoActive(sudo, user.id) ? sudo!.sudoExpiresAt : undefined,
     });
     headers["Authorization"] = `Bearer ${assertion}`;
   }

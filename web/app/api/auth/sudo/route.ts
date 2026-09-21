@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server";
-import { getSession, setSession } from "@/lib/session";
+import { auth } from "@/lib/auth/server";
+import { elevateSudo, getCurrentUser } from "@/lib/session";
 
 export async function POST(req: Request) {
   try {
-    const session = await getSession();
-    if (!session) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized: active session required" }, { status: 401 });
     }
 
     const body = await req.json();
     const password = body.password;
 
-    // Verify sudo credential per ADR-0005 (reauthentication requirement)
     if (!password || typeof password !== "string" || password.length < 6) {
       return NextResponse.json(
         { error: "Invalid credentials: minimum 6-character sudo passphrase required" },
@@ -19,13 +19,17 @@ export async function POST(req: Request) {
       );
     }
 
-    const now = Math.floor(Date.now() / 1000);
-    const sudoExpiresAt = now + 900; // Strict 15-minute TTL per ADR-0005
+    // Step-up credential verification (ADR-0005): re-validate the password
+    // against Neon Auth instead of trusting a client claim.
+    const { error } = await auth.signIn.email({ email: user.email, password });
+    if (error) {
+      return NextResponse.json(
+        { error: "Invalid credentials: password verification failed" },
+        { status: 401 }
+      );
+    }
 
-    await setSession({
-      ...session,
-      sudoExpiresAt,
-    });
+    const sudoExpiresAt = await elevateSudo(user.id);
 
     return NextResponse.json({
       success: true,
