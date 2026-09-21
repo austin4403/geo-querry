@@ -6,13 +6,9 @@ import {
   Lock,
   Mail,
   Loader2,
-  Database,
   Eye,
   EyeOff,
   User,
-  Zap,
-  ShieldCheck,
-  ArrowRight,
   UserCheck,
   CheckCircle2,
 } from "lucide-react";
@@ -26,7 +22,7 @@ function LoginForm() {
 
   const [isSignUp, setIsSignUp] = useState(false);
   const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("chief.geologist@geoquerry.local");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -111,21 +107,25 @@ function LoginForm() {
       } catch {
         // ignore
       }
-      setError(err instanceof Error ? err.message : "Neon OAuth failed to respond.");
+      setError(err instanceof Error ? err.message : "OAuth provider failed to respond.");
       setLoading(false);
     }
   };
 
-  const handlePersonaLogin = async (personaEmail: string) => {
+  const handlePersonaLogin = async (personaEmail: string, personaPass?: string) => {
     setEmail(personaEmail);
     setError(null);
     setLoading(true);
+
+    const defaultPass = personaEmail.includes("field") ? "FieldSurveyor2026!" : "GeoQuerryPassword123!";
+    const pass = personaPass || defaultPass;
+    setPassword(pass);
 
     try {
       const res = await fetch("/api/auth/sign-in/email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: personaEmail }),
+        body: JSON.stringify({ email: personaEmail, password: pass }),
       });
 
       if (!res.ok) {
@@ -151,7 +151,7 @@ function LoginForm() {
         </h1>
         <p className="text-xs text-zinc-400">
           {isSignUp
-            ? "Create your exploration account via Neon Auth"
+            ? "Create your exploration account"
             : "Sign in to access GIS field mapping & PostGIS survey datasets"}
         </p>
       </div>
@@ -163,27 +163,6 @@ function LoginForm() {
             {error}
           </div>
         )}
-
-        {/* Primary 1-Click Neon Auth Action */}
-        <div className="space-y-2">
-          <button
-            type="button"
-            onClick={() => handleOAuth("google")}
-            disabled={loading}
-            className="w-full py-3.5 px-4 rounded-xl bg-[#00e599] hover:bg-[#00c984] text-zinc-950 text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-[0_0_25px_rgba(0,229,153,0.35)] group disabled:opacity-60 cursor-pointer"
-          >
-            {loading ? (
-              <Loader2 className="w-4 h-4 animate-spin text-zinc-950" />
-            ) : (
-              <Zap className="w-4 h-4 fill-zinc-950 text-zinc-950 group-hover:scale-110 transition-transform" />
-            )}
-            <span>{loading ? "Authenticating with Neon Auth..." : "Continue with Neon Auth"}</span>
-            {!loading && <ArrowRight className="w-4 h-4 ml-auto opacity-70" />}
-          </button>
-          <p className="text-[11px] text-center text-zinc-400">
-            One-click passwordless sign-in with your active Neon workspace identity
-          </p>
-        </div>
 
         {/* Social Providers (Google & GitHub) */}
         <div className="grid grid-cols-2 gap-3">
@@ -237,7 +216,7 @@ function LoginForm() {
             <button
               type="button"
               disabled={loading}
-              onClick={() => handlePersonaLogin("chief.geologist@geoquerry.local")}
+              onClick={() => handlePersonaLogin("geologist@geoquerry.com", "GeoQuerryPassword123!")}
               className="flex items-center gap-2 p-2 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-emerald-500/50 text-left transition-colors group cursor-pointer disabled:opacity-60"
             >
               <UserCheck className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
@@ -250,7 +229,7 @@ function LoginForm() {
             <button
               type="button"
               disabled={loading}
-              onClick={() => handlePersonaLogin("field.surveyor@geoquerry.local")}
+              onClick={() => handlePersonaLogin("field.geologist@geoquerry.com", "FieldSurveyor2026!")}
               className="flex items-center gap-2 p-2 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-blue-500/50 text-left transition-colors group cursor-pointer disabled:opacity-60"
             >
               <CheckCircle2 className="h-3.5 w-3.5 text-blue-400 shrink-0" />
@@ -335,14 +314,6 @@ function LoginForm() {
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : isSignUp ? "Create Account & Onboard" : "Sign In with Credentials"}
           </button>
         </form>
-
-        {/* Security Guarantee Badge */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 text-xs text-zinc-400 flex items-start space-x-2.5">
-          <ShieldCheck className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
-          <span className="text-[11px] leading-relaxed">
-            Managed by <strong className="text-zinc-200 font-medium">Neon Auth</strong>. Zero credentials exposed to client. Sessions issue asymmetric Ed25519 tokens to the Go PostGIS core.
-          </span>
-        </div>
 
         {/* Toggle between Sign in and Sign up */}
         <div className="text-center pt-1">
