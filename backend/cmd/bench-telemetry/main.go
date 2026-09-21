@@ -128,7 +128,7 @@ func runDevice(
 				GpsAccuracy:       4.2,
 				Heading:           float64(90 + i),
 				SpeedMps:          1.4,
-				BatteryPercentage: int32(80 - i/2),
+				BatteryPercentage: int32(80 - i/2), // #nosec G115,
 				RecordedAt:        time.Now().UnixMilli(),
 			}
 			if err := stream.Send(pt); err != nil {

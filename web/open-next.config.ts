@@ -1,5 +1,5 @@
 // OpenNext Cloudflare Pages adapter configuration
-export default {
+const config = {
   default: {
     override: {
       wrapper: "cloudflare-pages",
@@ -10,3 +10,5 @@ export default {
     },
   },
 };
+
+export default config;
