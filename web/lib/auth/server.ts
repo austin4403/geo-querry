@@ -192,6 +192,12 @@ class NeonAuthServer {
         const handle = email.split("@")[0].replace(/[^a-zA-Z0-9]/g, "_");
         const userId = (body.userId as string) || `usr_${handle}`;
 
+        const redirectTarget =
+          (body.callbackURL as string) ||
+          (body.redirectTo as string) ||
+          (body.callbackUrl as string) ||
+          "/dashboard";
+
         const now = Math.floor(Date.now() / 1000);
         const payload = {
           userId,
@@ -221,7 +227,8 @@ class NeonAuthServer {
             createdAt: new Date(now * 1000).toISOString(),
             expiresAt: new Date((now + 15 * 86400) * 1000).toISOString(),
           },
-          redirect: "/dashboard",
+          url: redirectTarget,
+          redirect: redirectTarget,
         });
       }
 
