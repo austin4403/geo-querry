@@ -86,41 +86,25 @@ function LoginForm() {
     setLoading(true);
 
     try {
-      const res = await authClient.signIn.social({
-        provider,
-        callbackURL: redirect,
+      // Clear any pre-existing local session so the browser does not default into an old account
+      await fetch("/api/auth/sign-out", { method: "POST" }).catch(() => {});
+
+      const absoluteCallback = typeof window !== "undefined"
+        ? `${window.location.origin}${redirect}`
+        : redirect;
+
+      const res = await fetch("/api/auth/sign-in/social", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider,
+          callbackURL: absoluteCallback,
+        }),
       });
 
-      if (res?.error) {
-        if (provider === "github" && (res.error.message?.includes("not supported") || res.error.message?.includes("PROVIDER_NOT_SUPPORTED"))) {
-          setInfoNotice(
-            "GitHub OAuth requires a Client ID & Secret configured in the Neon Console (Auth → OAuth Providers). Please sign in using Google or Email credentials for instant access."
-          );
-          setLoading(false);
-          return;
-        }
-        setError(res.error.message || "OAuth initialization failed.");
-        setLoading(false);
-        return;
-      }
+      const data = await res.json().catch(() => ({}));
 
-      const dataUrl = (res?.data as { url?: string } | undefined)?.url;
-      navigateToTarget(dataUrl || redirect);
-    } catch (err: unknown) {
-      console.warn("[OAuth] Direct call error, checking upstream response:", err);
-      try {
-        const fallbackRes = await fetch("/api/auth/sign-in/social", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider, callbackURL: redirect }),
-        });
-        const data = await fallbackRes.json().catch(() => ({}));
-
-        if (fallbackRes.ok && (data.url || data.redirect)) {
-          navigateToTarget(data.url || data.redirect || redirect);
-          return;
-        }
-
+      if (!res.ok) {
         if (provider === "github" && (data.code === "PROVIDER_NOT_SUPPORTED" || data.error?.includes("not supported"))) {
           setInfoNotice(
             "GitHub OAuth requires a Client ID & Secret configured in the Neon Console (Auth → OAuth Providers). Please sign in using Google or Email credentials for instant access."
@@ -128,11 +112,18 @@ function LoginForm() {
           setLoading(false);
           return;
         }
-
-        setError(data.message || data.error || "OAuth provider failed to respond.");
-      } catch {
-        setError(err instanceof Error ? err.message : "OAuth provider failed to respond.");
+        throw new Error(data.message || data.error || "Failed to initialize social sign-in");
       }
+
+      if (data.url) {
+        // Redirect browser directly to the external Google / OAuth consent screen
+        window.location.href = data.url;
+        return;
+      }
+
+      throw new Error("No authorization URL returned by OAuth provider");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "OAuth provider failed to respond.");
       setLoading(false);
     }
   };
