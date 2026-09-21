@@ -1,10 +1,10 @@
 # 🗺️ GeoQuerry — Master Project Plan, Progress & Architecture Guide
 
-> **Current Status**: Phase 1 — Backend core implemented (sync engine, LWW conflicts, live telemetry hub)  
-> **Repository**: `austin4403/geo-querry`  
-> **Target Platforms**: Mobile (iOS & Android), Desktop Studio (Linux, macOS, Windows), Web GIS Portal  
+> **Current Status**: Phase 1 & 2 Active — Go PostGIS Engine (systemd daemon), River durable queue, Neon Auth sync trigger, and Next.js Web GIS Workstation implemented  
+> **Repository**: `austin4403/geo-querry` (Remotes: GitLab `origin` & GitHub `github`)  
+> **Target Platforms**: Web GIS Workstation, Mobile (iOS & Android Flutter), Desktop Studio (Linux, macOS, Windows)  
 > **Author & Lead**: Austin  
-> **Last Updated**: September 2026
+> **Last Updated**: September 2026  
 
 ---
 
@@ -26,7 +26,8 @@ Geological exploration, mineral concession management, hydrogeology, and borehol
    - Background telemetry streams live team coordinates and battery statuses when online.
 
 3. **In the Office / Exploration HQ**:
-   - Exploration managers view concessions and live geologist tracks on the **Web GIS Portal** (MapLibre GL JS Carto Dark Matter theme).
+   - Exploration managers view concessions and live geologist tracks on the **Web GIS Workstation** (MapLibre GL JS Carto Dark Matter / Light Mode themes).
+   - Team authentication with **Neon Auth (Managed Better Auth)** and Google OAuth, backed by Ed25519 internal assertions and automatic database trigger synchronization into `public.users` and `organization_memberships`.
    - Lead geoscientists open **Desktop GIS Studio** (Rust + Tauri 2.0) to slice massive multi-gigabyte shapefiles, plot structural stereonets, and render 3D borehole log stratigraphy without browser memory limits.
    - Dual-currency billing handles subscriptions via **Safaricom M-Pesa STK Push (KES)** for local African operations and **Paystack / Stripe (USD/Cards)** globally.
 
@@ -39,20 +40,20 @@ Geological exploration, mineral concession management, hydrogeology, and borehol
 * **Buf**: Protobuf linting, breaking change detection, and multi-language code generation (`buf.yaml`, `buf.gen.yaml`).
 * **ConnectRPC / gRPC**: High-performance binary transport compatible with HTTP/1.1, HTTP/2, gRPC-Web, and standard REST clients.
 
-### B. Backend Cloud API
-* **Language**: Go (Golang 1.23+)
+### B. Backend Engine (Local & Workstation Daemon)
+* **Language**: Go (Golang 1.25+)
 * **RPC Framework**: Connect-Go (`connectrpc.com/connect`) & standard `net/http` / Chi router
-* **Database Driver**: `jackc/pgx/v5` with connection pooling
+* **Database Driver**: `jackc/pgx/v5` with connection pooling (`pgxpool`)
+* **Durable Background Queue**: River queue engine for asynchronous GIS processing and audit jobs
+* **Session & Identity**: Ed25519 assertion verifier converting BFF session claims into authenticated ConnectRPC identities
 * **Object Storage**: AWS SDK for Go v2 configured for Cloudflare R2 (S3-compatible presigned PUT/GET)
-* **Real-time Telemetry Hub**: Goroutines + WebSockets / SSE backed by Upstash Redis pub/sub
-* **Payment Gateways**:
-  - **Safaricom Daraja API**: Lipa Na M-Pesa Online (C2B / STK Push) in KES with Daraja cryptographic signature verification
-  - **Paystack / Stripe API**: Card and international billing with webhook signature validation
-* **Deployment Runtime**: Single compiled static Go binary in a scratch / alpine container deployed on **Koyeb Eco Nano** (Always-on, 512 MB RAM, $0/mo).
+* **Real-time Telemetry Hub**: Goroutines + WebSockets / SSE backed by pub/sub
+* **Deployment Runtime**: Native **Linux systemd user daemon** (`geoquerry-backend.service`) running on `:8080` (zero external cloud compute dependencies, ultra-low latency, and local machine security).
 
 ### C. Database & Spatial Infrastructure
-* **Engine**: PostgreSQL 16+ on **Neon Serverless Postgres** ($0/mo tier)
+* **Engine**: PostgreSQL 16+ on **Neon Serverless Postgres**
 * **Spatial Extension**: **PostGIS 3.4+**
+* **Auth Schema**: `neon_auth` with real-time sync trigger (`on_neon_auth_user_sync`) synchronizing identities to `public.users` and provisioning tenant access in `public.organization_memberships`.
 * **Key Spatial Types**:
   - `GEOMETRY(PointZ, 4326)`: Outcrop stations and borehole collar coordinates with elevation
   - `GEOMETRY(MultiPolygon, 4326)`: Concession boundaries and exploration claims
@@ -65,12 +66,13 @@ Geological exploration, mineral concession management, hydrogeology, and borehol
 * **Offline Mapping**: `maplibre_gl` (Flutter) loading offline `.mbtiles` packages containing vector contours, satellite basemaps, and geological boundary layers.
 * **Serialization**: Dart Protobuf runtime for high-density, low-bandwidth data transfers.
 
-### E. Web GIS Portal (Management & Concession Portal)
-* **Framework**: Next.js 15+ (App Router) + TypeScript
-* **Styling**: Tailwind CSS v4 with custom **Carto Dark Matter** GIS theme (`#09090b` obsidian background, `#10b981` emerald telemetry accents, `#2563eb` electric cobalt controls).
-* **Map Engine**: MapLibre GL JS + `@maplibre/maplibre-gl-inspect`
-* **Real-Time Feed**: Server-Sent Events (SSE) / WebSocket connecting to Go live telemetry stream to display active geologists on concessions.
-* **Hosting**: **Cloudflare Pages** ($0/mo, global edge network).
+### E. Web GIS Workstation (Management & Concession Portal)
+* **Framework**: Next.js 16+ (App Router) + TypeScript
+* **Styling**: Tailwind CSS v4 with semantic tokens supporting **Carto Dark Matter** (`#09090b` obsidian background) and **Field Day Mode** (`#ffffff` high contrast) with instant `ThemeToggle`.
+* **Map Engine**: MapLibre GL JS + PostGIS vector rendering
+* **Authentication**: Neon Auth client & server BFF with Google OAuth, email credentials, fast test personas, and 15-minute sudo elevation.
+* **ConnectRPC Client**: Browser ConnectRPC client calling Go backend on `:8080`.
+* **Hosting**: Workstation local server (`:3001`) / Cloudflare Pages.
 
 ### F. Desktop GIS Studio (Heavyweight Workstation)
 * **Shell**: Tauri 2.0 (Rust)
@@ -81,14 +83,13 @@ Geological exploration, mineral concession management, hydrogeology, and borehol
 * **Frontend**: Shared React/Next.js UI components running in Tauri webview with native IPC bridge.
 
 ### G. Zero-Cost Infrastructure Matrix ($0.00 / month)
-| Service | Provider | Free Tier Allocation | Role |
+| Service | Provider | Tier Allocation | Role |
 | :--- | :--- | :--- | :--- |
-| Monorepo & CI/CD | GitLab Free | 400 CI/CD mins/month + Registry | Version control, Docker container build & registry |
-| Spatial Database | Neon Postgres | 0.5 GiB storage, PostGIS enabled | Canonical relational and spatial database |
+| Version Control | GitLab (`origin`) & GitHub (`github`) | Unlimited free repos & CI runners | Dual-remote version control & CI/CD |
+| Spatial Database & Auth | Neon Postgres | Free tier, PostGIS enabled + Neon Auth | Canonical relational and spatial database + OAuth identity |
+| Backend Engine | Local Host / Systemd User Daemon | Local CPU/RAM (`:8080`) | Go ConnectRPC sync engine, River queue, telemetry hub |
+| Web GIS Workstation | Next.js Engine (`:3001`) | Local Workstation / Cloudflare Pages | Interactive concession mapping, telemetry, and analysis |
 | Blob / Photo Storage | Cloudflare R2 | 10 GB free, $0 egress fees | Sample outcrop and vegetation photos |
-| Web Portal Hosting | Cloudflare Pages | Unlimited bandwidth, automatic builds | Web GIS interface |
-| Backend Compute | Koyeb Eco Nano | 512 MB RAM, 0.1 vCPU, always-on | Go API and sync server |
-| Telemetry Pub/Sub | Upstash Redis | 10,000 commands/day free | Ephemeral field team coordinate hub |
 
 ---
 
@@ -96,10 +97,10 @@ Geological exploration, mineral concession management, hydrogeology, and borehol
 
 ```
 geo-querry/
-├── .git/                                # Git version control
-├── .gitlab-ci.yml                       # GitLab CI/CD pipeline (Test, Build Docker, Deploy Koyeb)
+├── .git/                                # Git version control (GitLab + GitHub remotes)
+├── .gitlab-ci.yml                       # GitLab CI/CD pipeline (Test, Lint, Audit)
 ├── GEOQUERRY_SYSTEM_DESIGN.md           # Master System Architecture & Specifications
-├── PROJECT_PLAN.md                      # This document: Plan, progress, folder structure, tech stack
+├── PROJECT_PLAN.md                      # Master Plan, progress, folder structure, tech stack
 ├── README.md                            # High-level repository entrypoint
 │
 ├── proto/                               # Universal Protobuf Contracts
@@ -110,165 +111,113 @@ geo-querry/
 │           ├── geology.proto            # Stations, Measurements, Samples, Boreholes, Concessions, Vegetation
 │           ├── sync.proto               # PushSyncQueue & PullProjectData delta payloads
 │           ├── telemetry.proto          # Real-time GPS, heading, battery, and speed streaming
+│           ├── auth.proto               # ExchangeAssertion, VerifySudo, GetSessionContext
 │           └── service.proto            # GeoquerrySyncService RPC definitions
 │
-├── backend/                             # Compiled Go Backend Microservice
-│   ├── Dockerfile                       # Multi-stage scratch/alpine container build
+├── backend/                             # Compiled Go Backend Daemon
+│   ├── bin/
+│   │   └── server                       # Native compiled Go binary managed by systemd
 │   ├── go.mod                           # Go module definition
 │   ├── go.sum                           # Go dependencies checksum
 │   ├── cmd/
-│   │   └── server/
-│   │       └── main.go                  # Server entrypoint (HTTP/ConnectRPC listener, graceful shutdown)
+│   │   ├── server/                      # Server entrypoint (HTTP/ConnectRPC listener on :8080)
+│   │   ├── seed/                        # Idempotent DB seeder
+│   │   └── bench-telemetry/             # Telemetry streaming load tester
 │   ├── internal/
-│   │   ├── config/                      # Environment variables and config loading
-│   │   ├── db/
-│   │   │   ├── db.go                    # pgxpool connection manager for Neon PostGIS
-│   │   │   └── migrations/
-│   │   │       └── 000001_init.sql      # PostGIS tables, GIST indices, foreign keys
-│   │   ├── sync/
-│   │   │   ├── service.go               # PushSyncQueue & PullProjectData RPC business logic
-│   │   │   └── conflict.go             # LWW (Last-Write-Wins) timestamp resolution
-│   │   ├── telemetry/
-│   │   │   ├── hub.go                   # Real-time geologist location pub/sub & stream fanout
-│   │   │   └── upstash.go               # Upstash Redis client integration
-│   │   ├── mpesa/
-│   │   │   ├── daraja.go                # Safaricom Lipa Na M-Pesa STK push initiator
-│   │   │   └── webhook.go               # Daraja payment callback verification
-│   │   ├── paystack/
-│   │   │   ├── client.go                # Paystack transaction verification & checkout
-│   │   │   └── webhook.go               # Paystack signature check & tier provisioning
-│   │   └── r2/
-│   │       └── presigner.go             # Cloudflare R2 S3 presigned PUT/GET generator
+│   │   ├── auth/                        # Ed25519 verifier, context interceptor, identity resolver
+│   │   ├── config/                      # Environment configuration loader
+│   │   ├── db/                          # pgxpool connection manager for Neon PostGIS
+│   │   ├── sync/                        # PushSyncQueue & PullProjectData RPC business logic + LWW
+│   │   ├── telemetry/                   # Real-time geologist location pub/sub & stream fanout
+│   │   ├── mpesa/                       # Safaricom M-Pesa STK push & webhook handling
+│   │   ├── paystack/                    # Paystack checkout & webhook handling
+│   │   └── r2/                          # Cloudflare R2 S3 presigned URL generator
+│   ├── migrations/                      # Embedded database migrations
+│   │   ├── 000001_init.sql              # PostGIS tables, GIST indices, foreign keys
+│   │   ├── 000002_organizations.sql     # Multi-tenant organizations & memberships
+│   │   ├── 000003_audit_trail.sql       # Immutable GIS audit logging
+│   │   ├── 000004_river_queue.sql       # River durable background queue schema
+│   │   ├── 000005_fix_column_names.sql  # Schema alignment migrations
+│   │   └── 000006_neon_auth_sync.sql    # Real-time neon_auth -> public.users sync trigger
 │   └── pkg/
 │       └── proto/                       # Generated Go Protobuf & ConnectRPC code
-│           └── geoquerryv1/
+│
+├── web/                                 # Next.js Collaborative Web GIS Workstation
+│   ├── package.json                     # Next.js 16, MapLibre GL, Tailwind CSS v4, Lucide React
+│   ├── app/
+│   │   ├── globals.css                  # Semantic design tokens (Dark Matter & High-Contrast Light)
+│   │   ├── layout.tsx                   # Workstation root layout
+│   │   ├── page.tsx                     # Landing page & exploration overview
+│   │   ├── login/                       # Themed Auth portal (Google OAuth, credentials, fast personas)
+│   │   ├── dashboard/                   # Main GIS control panel & concession explorer
+│   │   ├── concessions/                 # Concession polygon manager and license expiry monitor
+│   │   └── api/
+│   │       └── auth/                    # Better Auth BFF endpoint proxy
+│   ├── components/
+│   │   ├── ui/                          # Button, Input, Card, Badge, ThemeToggle
+│   │   ├── gis/                         # MapLibreCanvas, StructuralLayers, ConcessionPolygonLayer
+│   │   └── icons/                       # GeoQuerry SVG brand assets
+│   └── lib/
+│       ├── auth/                        # Neon Auth client & server configs
+│       ├── session.ts                   # Sudo elevation & session state resolvers
+│       └── rpc/                         # ConnectRPC client calling Go backend (:8080)
 │
 ├── mobile/                              # Flutter Cross-Platform Field App (iOS & Android)
-│   ├── pubspec.yaml                     # Flutter dependencies (drift, sensors_plus, maplibre_gl, protobuf)
-│   ├── assets/
-│   │   └── tiles/                       # Default offline base boundaries and style JSON
-│   └── lib/
-│       ├── main.dart                    # Application bootstrap and dark GIS theme initialization
-│       ├── compass/
-│       │   ├── sensor_fusion.dart       # 120 FPS Accelerometer + Magnetometer fusion & stability gating
-│       │   ├── structural_math.dart     # Strike, Dip, Dip Direction, Trend, Plunge calculations
-│       │   └── compass_dial_widget.dart # High-precision geological compass UI with virtual bubble level
-│       ├── db/
-│       │   ├── app_database.dart        # Drift SQLite database definition & DAOs
-│       │   └── tables.dart              # Stations, measurements, rock samples, boreholes, vegetation
-│       ├── map/
-│       │   ├── offline_map_view.dart    # MapLibre GL offline vector tile layer & station markers
-│       │   └── tile_cache_manager.dart  # Download & management of .mbtiles regional bounding boxes
-│       └── sync/
-│           ├── sync_client.dart         # ConnectRPC / Protobuf push/pull queue execution
-│           └── telemetry_service.dart   # Background GPS breadcrumb tracking and battery reporter
-│
-├── web/                                 # Next.js Collaborative Web GIS Portal
-│   ├── package.json                     # Next.js, MapLibre GL, Tailwind CSS v4, Lucide React
-│   ├── next.config.ts                   # Next.js configuration (Cloudflare Pages compatible)
-│   ├── app/
-│   │   ├── layout.tsx                   # Dark Matter root layout (`#09090b` palette)
-│   │   ├── page.tsx                     # Landing page & exploration overview
-│   │   ├── concessions/
-│   │   │   └── page.tsx                 # Concession polygon manager and license expiry monitor
-│   │   ├── telemetry/
-│   │   │   └── page.tsx                 # Real-time field team map tracker
-│   │   └── billing/
-│   │       └── page.tsx                 # M-Pesa STK push dialog and Paystack card checkout
-│   ├── components/
-│   │   ├── gis/
-│   │   │   ├── MapLibreCanvas.tsx       # MapLibre GL JS interactive map with Carto Dark Matter
-│   │   │   ├── StructuralLayers.tsx     # Strike & Dip directional needles and outcrop pins
-│   │   │   └── ConcessionPolygonLayer.tsx # Mining license boundary vectors
-│   │   └── ui/                          # Button, Modal, Badge, Drawer, Metric Cards
-│   └── lib/
-│       ├── api.ts                       # Go backend ConnectRPC / REST fetch client
-│       └── sse.ts                       # Live telemetry Server-Sent Events subscriber
+│   ├── pubspec.yaml                     # Drift SQLite, sensors_plus, maplibre_gl, protobuf
+│   └── lib/                             # Compass sensor fusion (120 FPS), offline vector maps, sync client
 │
 └── desktop/                             # Tauri 2.0 Workstation GIS Studio
-    ├── package.json                     # Webview frontend dependencies
-    ├── src/                             # Workstation UI views (Borehole log viewer, stereonets)
-    └── src-tauri/
-        ├── Cargo.toml                   # Rust dependencies: tauri, geozero, geo, polars
-        ├── tauri.conf.json              # Window layout, security permissions, file system scopes
-        └── src/
-            ├── main.rs                  # Tauri bootstrap & registered Rust commands
-            ├── shapefile_parser.rs      # Native zero-copy ESRI shapefile and GeoTIFF ingest
-            ├── stereonet.rs             # Structural geology stereonet calculations (Schmidt / Wulff)
-            └── borehole_slicer.rs       # 3D drillhole log interpolation & stratigraphy slicing
+    ├── src-tauri/                       # Rust engine: geozero, polars, stereonets, LAS borehole slicer
+    └── src/                             # Workstation UI views
 ```
 
 ---
 
-## 4. Current File Progress & Audit
+## 4. Current File Progress & Implementation Audit
 
-| Path | Status | Details |
+| Component | Status | Details |
 | :--- | :---: | :--- |
-| **Documentation** | | |
-| [GEOQUERRY_SYSTEM_DESIGN.md](file:///home/austin/Projects/geo-querry/GEOQUERRY_SYSTEM_DESIGN.md) | ✅ Complete | Complete master architecture specification (13.6 KB). |
-| [PROJECT_PLAN.md](file:///home/austin/Projects/geo-querry/PROJECT_PLAN.md) | ✅ Complete | This plan, status tracking, structure, and roadmap document. |
-| [README.md](file:///home/austin/Projects/geo-querry/README.md) | 🔄 In Progress | Needs update to link master system docs and quickstart instructions. |
-| **Protocol Buffers (`proto/`)** | | |
-| [proto/buf.yaml](file:///home/austin/Projects/geo-querry/proto/buf.yaml) | ✅ Complete | Buf v2 configuration with default lint rules. |
-| [proto/geoquerry/v1/geology.proto](file:///home/austin/Projects/geo-querry/proto/geoquerry/v1/geology.proto) | ✅ Complete | Schemas for `StructuralMeasurement`, `RockSample`, `Station`, `Borehole`, `BoreholeInterval`, `ConcessionPolygon`, `Vegetation`. |
-| [proto/geoquerry/v1/sync.proto](file:///home/austin/Projects/geo-querry/proto/geoquerry/v1/sync.proto) | ✅ Complete | Schemas for `PushSyncQueueRequest/Response`, `PullProjectDataRequest/Response`, `EntitySyncResult`. |
-| [proto/geoquerry/v1/telemetry.proto](file:///home/austin/Projects/geo-querry/proto/geoquerry/v1/telemetry.proto) | ✅ Complete | Schemas for `StreamLiveTelemetryRequest/Response`, `TeamMemberLocation`. |
-| [proto/geoquerry/v1/service.proto](file:///home/austin/Projects/geo-querry/proto/geoquerry/v1/service.proto) | ✅ Complete | RPC Service `GeoquerrySyncService` with push, pull, and stream endpoints. |
-| `proto/buf.gen.yaml` | ✅ Go codegen complete | Generates Go protos + ConnectRPC stubs into `backend/pkg/proto`. Dart & TS plugins still to be added. |
-| **Backend Service (`backend/`)** | | |
-| [backend/internal/db/migrations/000001_init.sql](file:///home/austin/Projects/geo-querry/backend/internal/db/migrations/000001_init.sql) | ✅ Complete | PostGIS tables: `projects`, `concessions`, `stations`, `structural_measurements`, `rock_samples`, `vegetation`, `boreholes`, `borehole_intervals` with GIST indices + documented sync conventions (unix-ms `updated_at`, soft deletes, PointZ geometry). |
-| `backend/go.mod` | ✅ Complete | Module `gitlab.com/austin4403/geoquerry/backend`; deps: connect v1.18, pgx v5.11 (needs Go 1.25 toolchain), google/uuid. |
-| `backend/cmd/server/main.go` | ✅ Complete | HTTP & ConnectRPC bootstrap: DB connect, embedded migrations, CORS for the web portal, request logging, `/livez` + `/readyz`, streaming-safe timeouts, graceful SIGTERM shutdown. |
-| `backend/internal/config/config.go` | ✅ Complete | Env-var config with validation (PORT, DATABASE_URL, pool sizing, CORS origins, telemetry TTL). Unit-tested. |
-| `backend/internal/db/db.go` | ✅ Complete | pgxpool manager + migration runner (embedded SQL, per-file transactions, `schema_migrations` bookkeeping). |
-| `backend/internal/sync/service.go` | ✅ Complete | PushSyncQueue & PullProjectData handlers: validation, parents-before-children ordering, per-entity results, 2-minute pull overlap guard against delta races. |
-| `backend/internal/sync/conflict.go` | ✅ Complete | Last-Write-Wins resolution + Postgres error → SyncStatus classification. Unit-tested. |
-| `backend/internal/sync/store.go` | ✅ Complete | LWW-guarded upserts (`ON CONFLICT ... WHERE updated_at <` + `xmax` insert-detection), delta pulls, borehole interval wholesale-replace in one tx. |
-| `backend/internal/telemetry/hub.go` | ✅ Complete | In-memory pub/sub: per-project snapshots, two-stage TTL expiry (grey-out → forget), slow-subscriber drop. Unit-tested. |
-| `backend/internal/telemetry/service.go` | ✅ Complete | StreamLiveTelemetry bidi handler (goroutine-multiplexed receive loop, leak-free). |
-| `backend/internal/telemetry/upstash.go` | ⏳ Pending | Upstash Redis backing for multi-instance telemetry (single Koyeb instance makes this optional for now). |
-| `backend/internal/auth/interceptor.go` | ✅ Complete | API-key gate on all RPCs (incl. streaming): SHA-256 + constant-time compare, disabled when env unset, unit-tested. v1 compromise — see SECURITY.md §6. |
-| `backend/cmd/seed/main.go` | ✅ Complete | Dev utility: idempotently seeds a demo project + concession (no CreateProject RPC yet). |
-| `backend/cmd/bench-telemetry/main.go` | ✅ Complete | Simulated field team over the bidi stream (h2c client) — verifies fan-out end to end. |
-| `backend/internal/r2/` | ✅ Complete | Cloudflare R2 presigned photo uploads: `media.proto` contract, `CreatePhotoUpload` RPC (server-minted keys, image allowlist, size cap, 5-min TTL), graceful degradation when unconfigured. Live-tested; signing is offline so tests need no network. |
-| `backend/internal/mpesa/` | ✅ Complete | Safaricom Daraja STK Push client (OAuth-cached) + callback webhook (secret-path auth, idempotency-ready, Daraja ack contract). Billing-tier persistence lands with the billing milestone. |
-| `backend/internal/paystack/` | ✅ Complete | Paystack checkout + verify client, webhook with HMAC-SHA512 constant-time verification over raw bytes + mandatory API re-verification before trusting a charge. Tier provisioning lands with the billing milestone. |
-| `backend/Dockerfile` | ✅ Complete | Multi-stage golang:1.25-alpine → scratch, non-root UID 65532, CA certs + tzdata baked in; root `.dockerignore` added. |
-| **Security & CI** | | |
-| [SECURITY.md](file:///home/austin/Projects/geo-querry/SECURITY.md) | ✅ Complete | Full audit: govulncheck 0 reachable CVEs, gosec 0 (hand-written), threat model, known gaps roadmap, deployment checklist. |
-| [.gitlab-ci.yml](file:///home/austin/Projects/geo-querry/.gitlab-ci.yml) | ✅ Complete | Stages: test (+ `-race`), govulncheck + gosec gates, Docker build, Koyeb deploy. |
-| `docker-compose.yml` | ✅ Complete | Local PostGIS 16/3.4 dev database with healthcheck. |
-| **CI/CD (`.gitlab-ci.yml`)** | ⏳ Pending | Pipeline for automated backend tests, container build, and Koyeb deployment. |
+| **Database & Migrations** | | |
+| `000001_init.sql` to `000005_fix_column_names.sql` | ✅ Complete | PostGIS tables: `projects`, `concessions`, `stations`, `structural_measurements`, `rock_samples`, `vegetation`, `boreholes`, `borehole_intervals` with GIST indices + audit trails + River queue. |
+| `000006_neon_auth_sync.sql` | ✅ Complete | Real-time PostgreSQL trigger (`on_neon_auth_user_sync`) syncing `neon_auth."user"` to `public.users` and provisioning `organization_memberships` (Turkana Gold Ltd). |
+| **Backend Engine (`backend/`)** | | |
+| `backend/cmd/server/main.go` | ✅ Complete | HTTP & ConnectRPC bootstrap: DB connect, River queue engine, CORS, request logging, `/healthz`, `/livez`, `/readyz`. |
+| `backend/internal/auth/service.go` | ✅ Complete | `ExchangeAssertion`, `VerifySudo`, and `GetSessionContext` ConnectRPC handlers with fallback identity resolution. |
+| `backend/internal/sync/service.go` | ✅ Complete | `PushSyncQueue` & `PullProjectData` handlers with LWW conflict resolution and delta-sync protection. |
+| `backend/internal/telemetry/hub.go` | ✅ Complete | In-memory real-time pub/sub hub with coordinate TTL and broadcast streams. |
+| `systemd` Daemon Configuration | ✅ Complete | Managed as active systemd user service (`geoquerry-backend.service`) running on `:8080`. |
+| **Web GIS Workstation (`web/`)** | | |
+| `web/app/login/page.tsx` | ✅ Complete | Re-themed workstation login matching original application design tokens; Google OAuth, credentials, fast personas, theme toggle. |
+| `web/app/dashboard/page.tsx` | ✅ Complete | Full GIS workstation dashboard with live user session profile, PostGIS concession data, and MapLibre canvas. |
+| `web/components/ui/` | ✅ Complete | Semantic design system: `button.tsx`, `card.tsx`, `badge.tsx`, `input.tsx`, `theme-toggle.tsx`. |
+| `web/lib/auth/` | ✅ Complete | Neon Auth client & server initialization with Ed25519 token assertions. |
 | **Mobile App (`mobile/`)** | ⏳ Pending | Flutter setup (`pubspec.yaml`), Drift SQLite schema, `sensors_plus` compass dial, MapLibre GL offline vector map. |
-| **Web Portal (`web/`)** | ⏳ Pending | Next.js App Router setup, Carto Dark Matter MapLibre canvas, live telemetry dashboard, payment UI. |
 | **Desktop Studio (`desktop/`)** | ⏳ Pending | Tauri 2.0 Rust setup (`Cargo.toml`), Shapefile parser with `geozero`, structural stereonets. |
 
 ---
 
-## 5. Execution Roadmap & Next Milestones
+## 5. Execution Roadmap & Milestones
 
 ```mermaid
 flowchart TD
-    subgraph Phase1["Phase 1: Foundation & Backend (Active)"]
-        A1["Protobuf Contracts\n(geology, sync, telemetry, service)"] --> A2["Buf Code-Gen\n(Go / Dart / TS)"]
-        A2 --> A3["Go Backend Skeleton\n(ConnectRPC + pgxpool)"]
-        A3 --> A4["Neon PostGIS Sync Engine\n(LWW Conflict Resolution)"]
-        A4 --> A5["M-Pesa & Paystack\nWebhooks + R2 Presigner"]
-        A5 --> A6["GitLab CI/CD +\nKoyeb Deployment"]
+    subgraph Phase1["Phase 1: Foundation & Backend (Operational)"]
+        A1["Protobuf Contracts\n(geology, sync, telemetry, auth)"] --> A2["Buf Code-Gen\n(Go / Dart / TS)"]
+        A2 --> A3["Go Backend Daemon\n(ConnectRPC + pgxpool + River)"]
+        A3 --> A4["Neon PostGIS Engine\n(LWW Sync + Auth Trigger)"]
+        A4 --> A5["Systemd Workstation Service\n(Zero Cloud Compute Dependency)"]
     end
 
-    subgraph Phase2["Phase 2: Mobile Field App (Flutter)"]
-        B1["Flutter Skeleton +\nCarto Dark Theme"] --> B2["Drift Local SQLite DB\n(Offline Entities)"]
-        B2 --> B3["120 FPS Sensor Fusion Compass\n(Strike & Dip Gating)"]
-        B3 --> B4["MapLibre GL Mobile\n(Offline .mbtiles Cache)"]
-        B4 --> B5["Protobuf Binary Sync\nClient to Go API"]
+    subgraph Phase2["Phase 2: Web GIS Workstation (Operational)"]
+        B1["Next.js Workstation App\n(Design System & Semantic Tokens)"] --> B2["Neon Auth & Ed25519 BFF\n(Google OAuth + Credentials)"]
+        B2 --> B3["MapLibre GL GIS Canvas\n(Carto Dark & Field Light Themes)"]
+        B3 --> B4["Concession Boundary Management\n& Live Team Telemetry Tracker"]
     end
 
-    subgraph Phase3["Phase 3: Web GIS Portal (Next.js)"]
-        C1["Next.js App Router +\nTailwind v4 Setup"] --> C2["MapLibre GL JS Canvas\n(Carto Dark Matter Theme)"]
-        C2 --> C3["Live Team Telemetry\n(SSE Real-Time GPS Tracking)"]
-        C3 --> C4["M-Pesa STK & Card Checkout Dialog"]
-        C4 --> C5["Cloudflare Pages Deployment"]
+    subgraph Phase3["Phase 3: Mobile Field App (Flutter)"]
+        C1["Flutter 3.x Scaffold\n(High-Contrast Field GIS Theme)"] --> C2["Drift Local SQLite DB\n(Offline Sync Cache)"]
+        C2 --> C3["120 FPS Sensor Fusion Compass\n(Strike & Dip Gating)"]
+        C3 --> C4["MapLibre Mobile Offline Vector Tiles\n(.mbtiles Caching)"]
+        C4 --> C5["Binary Protobuf Sync Client\nto Go Backend"]
     end
 
     subgraph Phase4["Phase 4: Desktop GIS Studio (Rust + Tauri 2.0)"]
@@ -278,21 +227,16 @@ flowchart TD
     end
 
     Phase1 --> Phase2
-    Phase1 --> Phase3
+    Phase2 --> Phase3
     Phase3 --> Phase4
 ```
 
-### Immediate Step-by-Step Action Items
-1. **Initialize Go Module & Code Generation**:
-   - Initialize `backend/go.mod`.
-   - Install protoc Go plugins (`protoc-gen-go`, `protoc-gen-connect-go`) and compile `.proto` definitions into `backend/pkg/proto/geoquerryv1`.
-2. **Build Go Backend Core**:
-   - Write database access layer connecting to Neon PostGIS via `pgx/v5`.
-   - Implement `GeoquerrySyncService` (`PushSyncQueue` and `PullProjectData`) with transactional Last-Write-Wins logic.
-   - Implement Cloudflare R2 presigned URL generator for photo uploads.
-   - Implement M-Pesa STK push and Paystack webhook verification.
-3. **Configure Monorepo GitLab CI/CD**:
-   - Create `.gitlab-ci.yml` with backend test, Docker container build to GitLab Container Registry, and auto-deploy to Koyeb.
-4. **Kick Off Mobile & Web Frontends**:
-   - Generate Dart protobuf models for Flutter and establish the Drift SQLite database.
-   - Scaffold the Next.js Web GIS Portal with MapLibre GL Dark Matter styling.
+### Next Immediate Action Items
+1. **Field Data Capture in Web Workstation**:
+   - Add Station and Outcrop form creation tools with interactive map pin placement.
+   - Wire structural measurement inputs (strike, dip, rock type) directly to PostGIS via ConnectRPC.
+2. **Mobile App Prototype (`mobile/`)**:
+   - Generate Dart protobuf models via `buf generate`.
+   - Setup Drift SQLite schema matching `000001_init.sql` for offline data recording in the field.
+3. **Photo Storage Integration**:
+   - Implement Cloudflare R2 presigned upload endpoint in Go backend for geological sample photographs.

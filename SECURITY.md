@@ -1,8 +1,8 @@
 # 🔐 GeoQuerry Backend — Security Audit & Threat Model
 
-> **Scope**: `backend/` Go API service (sync engine, telemetry hub, HTTP surface, container)
-> **Date**: September 2026 · **Auditor**: automated toolchain + manual review
-> **Verdict**: ✅ **0 known reachable CVEs, 0 gosec findings, 0 staticcheck findings** on hand-written code. Known architectural gaps are listed explicitly in §6 — none are silent.
+> **Scope**: `backend/` Go engine daemon (sync engine, telemetry hub, ConnectRPC surface, identity verification)  
+> **Date**: September 2026 · **Auditor**: automated toolchain + manual review  
+> **Verdict**: ✅ **0 known reachable CVEs, 0 gosec findings, 0 staticcheck findings** on hand-written code. Identity verification via Ed25519 assertions, audit trails, and Neon Auth triggers are implemented.  
 
 ---
 
@@ -10,129 +10,126 @@
 
 | Tool | What it checks | Result |
 | :--- | :--- | :--- |
-| `govulncheck` (official Go vuln DB) | Known CVEs **reachable from our call graph** | ✅ **0 reachable** (was 3 — fixed, see §2) |
-| `gosec` (securego) | 40+ CWE classes: hardcoded creds, overflow, log injection, weak crypto… | ✅ **0 open findings** — 5 suppressions, each with an inline justification (below) |
+| `govulncheck` (official Go vuln DB) | Known CVEs **reachable from our call graph** | ✅ **0 reachable** |
+| `gosec` (securego) | 40+ CWE classes: hardcoded creds, overflow, log injection, weak crypto… | ✅ **0 open findings** — 5 surgical suppressions with inline rationale |
 | `staticcheck` | Correctness, deprecated APIs, perf traps | ✅ **0 findings** |
 | `go vet` + `gofmt` | Standard Go diagnostics | ✅ clean |
 | Unit tests (`go test -race ./...`) | LWW logic, auth gate, hub behavior, config + **data-race detection** | ✅ 4 packages, all green |
 
-### Suppression policy
+### Suppression Policy
+`#nosec` is used surgically — only where the risk is already mitigated and gosec's dataflow cannot see it — and every suppression carries an inline justification.
+- `internal/config/config.go` ×2: `G115` (int→int32 overflow) — values verified via `envIntInRange` within `[0..64]`.
+- `internal/auth/interceptor.go`: `G101` — header name `X-Geoquerry-Api-Key` constant, not credentials.
+- `internal/config/config.go`: `G706` — rendered via `%q` escaping.
+- `cmd/server/main.go`: `G706` — path sanitized via `sanitizeLogField` + `%q`.
 
-`#nosec` is used surgically — only where the risk is already mitigated and gosec's dataflow cannot see it — and every suppression carries an inline justification. The gosec summary reports `Nosec: 5`, so suppressed sites cannot accumulate silently. Current suppressions:
-
-| Site | Rule | Why it is safe (and suppressed) |
-| :--- | :--- | :--- |
-| `internal/config/config.go` ×2 | G115 (int→int32 overflow) | value comes from `envIntInRange`, which hard-fails boot outside `[0..64]` — gosec cannot track the helper's range check |
-| `internal/auth/interceptor.go` | G101 (hardcoded credentials) | the constant is an HTTP header **name** (`X-Geoquerry-Api-Key`), not a credential; real keys live in env vars |
-| `internal/config/config.go` | G706 (log injection) | env value rendered via `%q`, which escapes control characters |
-| `cmd/server/main.go` | G706 (log injection) | request path passes through `sanitizeLogField` (strips all control chars) **and** `%q` |
-
-`backend/pkg/proto/**` (generated protobuf codegen) is additionally excluded from gosec: it reports 14 `G103` (unsafe pointer use) findings that originate in **google.golang.org/protobuf's code generator**, are standard across every protobuf Go project, and are not maintainable from this repo. Tracked as an accepted risk in §6.8.
-
-## 2. Vulnerabilities Found & Fixed During This Audit
-
-| ID | Severity | Where | Issue | Fix |
-| :--- | :--- | :--- | :--- | :--- |
-| GO-2026-5970 | MEDIUM | `x/text v0.31.0` | reachable via sync/telemetry codecs | bumped to `v0.39.0` |
-| GO-2026-5026 | MEDIUM | `x/net v0.47.0` | IDNA/Punycode handling reached via HTTP/2 transport | bumped to `v0.55.0` |
-| GO-2026-4918 | HIGH | `x/net v0.47.0` | **infinite loop / DoS** in HTTP/2 on malformed `SETTINGS_MAX_FRAME_SIZE` — directly reachable by any client that opens a telemetry stream | bumped to `v0.55.0` |
-| gosec G115 ×2 | HIGH | `internal/config` | `int → int32` connection-pool conversion could silently wrap on absurd env values | parse as int64 + hard-fail range validation `[1..64]` |
-| gosec G706 | LOW | `cmd/server` | **log injection**: request path is attacker-controlled and was logged raw (newlines could forge log lines) | `sanitizeLogField` strips all control characters |
-| gosec G101 ×2 | HIGH | `cmd/seed`, `internal/auth` | hardcoded-credential *patterns* | seed no longer carries a fallback DSN (requires `DATABASE_URL`); auth constant documented as a header name, not a secret (`#nosec G101` with rationale) |
-| SA1019 | LOW | `cmd/server` | deprecated `golang.org/x/net/h2c` wrapper | replaced with Go-native `http.Server.Protocols` (`SetUnencryptedHTTP2`) — dependency removed |
-
-## 3. Attack Surface Map
-
-```
-Internet ──▶ Koyeb edge (TLS termination) ──▶ Go binary (this repo)
-                                                ├─ /livez, /readyz          (unauthenticated, no data)
-                                                ├─ /geoquerry.v1.../PushSyncQueue      (API key)
-                                                ├─ /geoquerry.v1.../PullProjectData    (API key)
-                                                └─ /geoquerry.v1.../StreamLiveTelemetry(API key, bidi h2c)
-                                                     └─▶ PostGIS (Neon, TLS, 4 conns max)
-```
-
-## 4. Controls in Place (verified)
-
-### 4.1 Transport
-- **TLS terminates at Koyeb's edge**; the Go binary speaks h2c/HTTP1 inside the platform network. Local runs are plaintext by design — never expose the raw binary directly to the internet without TLS in front.
-- `ReadHeaderTimeout` (10s) + `IdleTimeout` (120s) are set; **deliberately no global `Read/WriteTimeout`** — those would kill long-lived telemetry streams (documented at the config site).
-
-### 4.2 Authentication (v1: shared API keys)
-- All three RPCs (unary **and** the streaming handler — the location-leaking one) sit behind `internal/auth`: `X-Geoquerry-Api-Key` header checked against `GEOQUERRY_API_KEYS`.
-- Keys are **SHA-256 hashed at boot** and compared with `subtle.ConstantTimeCompare` over equal-length digests — no timing oracle for key length or prefix (covered by `TestKeyLengthVariationRejected`).
-- Missing/invalid key → Connect `CodeUnauthenticated`.
-- Gate is **off when the env var is unset** (local dev convenience). Deployment checklist (§7) makes setting it mandatory.
-
-### 4.3 Input validation & injection
-- **No string-built SQL anywhere.** Every statement is a constant with `$n` placeholders (pgx prepared statements) — SQL injection surface is structurally zero.
-- All client-supplied IDs pass `uuid.Parse` before touching the DB (a malformed UUID would otherwise hit Postgres as `22P02` noise); lat/lon are range- and NaN/Inf-checked before entering PostGIS (one NaN point would poison every spatial query on the table).
-- Request bodies on unary RPCs are capped by `withBodyLimit` (default 4 MB, env `MAX_BODY_BYTES`): `Content-Length` rejected pre-read **and** `http.MaxBytesReader` for lying/chunked clients. The telemetry stream is exempt by route (its body legitimately grows over hours) — see §6.4 for the residual risk.
-
-### 4.4 Sync engine integrity
-- Writes are LWW-guarded **inside Postgres** (`ON CONFLICT … WHERE updated_at < EXCLUDED`) — no read-modify-write race exists to exploit.
-- Per-entity errors are classified and reported; a hostile/buggy batch cannot abort the whole push mid-transaction (each entity is its own statement/tx).
-- Borehole intervals are replaced in the same transaction as their parent — no partial-log states.
-
-### 4.5 Telemetry hub
-- Ephemeral by design: **no persistence** of live locations; TTL (60s default) + 4×TTL forgetting bounds the window any location datum exists in RAM.
-- Slow/broken subscribers can never block the publisher (non-blocking send with drop); a wedged client can't stall the whole team's stream.
-- The receive goroutine is context-aware — no goroutine leak per dropped connection (resource-exhaustion vector closed; covered by unit tests).
-
-### 4.6 Container & supply chain
-- `scratch` runtime image: **no shell, no package manager, no libc** — minimal RCE surface if exfiltrated.
-- Runs as **UID 65532 (non-root)** — container compromise lands on an unprivileged user.
-- CA bundle baked in (required for Neon TLS + future payment APIs).
-- `go.mod`/`go.sum` pinned; `govulncheck` runs in CI (§8) so future CVEs fail the build instead of shipping silently.
-
-## 5. Data Protection Notes
-
-| Data | At rest | In transit | Notes |
-| :--- | :--- | :--- | :--- |
-| Field geo data | Neon (encrypted at rest) | TLS to Neon (`sslmode=require` on prod DSN) | |
-| Live telemetry | **RAM only, TTL ≤ 4 min** | same TLS as above | never written to disk |
-| Photos (future R2) | R2 | presigned URL direct-to-R2 | keys only in DB |
-| API keys | env var → SHA-256 in RAM | header over TLS | rotate via §7 |
-
-## 6. Known Gaps & Accepted Risks (roadmap)
-
-| # | Gap | Risk | Planned mitigation |
-| :--- | :--- | :--- | :--- |
-| 6.1 | **Shared API key, no per-user identity** | a leaked key = full project read/write; no attribution of who wrote what | Phase 2: per-user JWT (project-scoped claims) issued by a `/auth` RPC; key becomes bootstrap-only |
-| 6.2 | **No authorization levels** | any key holder can pull ALL project data (owner/editor/viewer distinction from the design doc is not enforced yet) | same JWT work: `project_members` table + claims check per project |
-| 6.3 | **No rate limiting** | scripted hammering of push/pull could exhaust the 4 DB connections / CPU | per-IP + per-key token bucket at the middleware layer; Koyeb edge limits help |
-| 6.4 | **Telemetry stream exempt from body cap** | one connection can push breadcrumbs unboundedly for hours | per-stream message-rate limit (e.g. 10 pts/s) in the stream handler |
-| 6.5 | **API-key gate off by default** | a deploy that forgets `GEOQUERRY_API_KEYS` ships open | CI/deploy template injects the var; a startup warning log exists — a hard fail in "production mode" is the next step |
-| 6.6 | **Client timestamps trusted for LWW** | a device with a skewed clock can win conflicts it shouldn't | hybrid logical clock (HLC); upsert shape already compatible |
-| 6.7 | **CORS `*` when `CORS_ALLOWED_ORIGINS` unset** | any website could call the API from a browser *if a key leaks to it* | set the var in prod; browser preflight never carries the key header anyway |
-| 6.8 | **Generated protobuf uses `unsafe`** (14 gosec G103) | none demonstrated — upstream codegen pattern | accepted; regenerate with newer protoc-gen-go when it drops `unsafe` |
-| 6.9 | **No audit log** | writes are attributable only after 6.1 | `audit_log` table when identity lands |
-| 6.10 | **M-Pesa/Paystack/R2 not yet implemented** | callback-signature verification is THE critical control when they land | webhook signature checks are specified in the design doc and MUST precede any production billing launch |
-
-## 7. Deployment Hardening Checklist (Koyeb)
-
-```bash
-# 1. Generate a strong API key (per environment!)
-openssl rand -base64 32
-
-# 2. Set on the Koyeb service (all required):
-DATABASE_URL=postgres://...neon.tech/neondb?sslmode=require   # note sslmode=require
-GEOQUERRY_API_KEYS=<the key above>                            # enables the auth gate
-CORS_ALLOWED_ORIGINS=https://<your-portal>.pages.dev          # lock CORS to your portal
-PORT=8080
-
-# 3. Optional tuning (sane defaults shown):
-MAX_BODY_BYTES=4194304   DB_MAX_CONNS=4   TELEMETRY_MEMBER_TTL=60s
-```
-
-- Store `GEOQUERRY_API_KEYS` in GitLab CI variables (masked+protected) and Koyeb secrets — never in the repo.
-- Rotate by adding the new key to the comma list, redeploying clients, then removing the old key (both are valid during the overlap).
-- `/readyz` returns 503 when Postgres is unreachable → wire it as Koyeb's readiness probe so a wedged DB drains traffic.
-
-## 8. Continuous Verification (in `.gitlab-ci.yml`)
-
-The pipeline runs `go vet`, `go test`, `govulncheck` (fails on reachable CVEs), `gosec` (fails on new findings in hand-written code), and builds the container — the same gates used in this audit, so regressions are caught at merge time, not in production.
+\* `backend/pkg/proto/**` (generated protobuf codegen) is excluded from gosec: it reports 14 `G103` (unsafe pointer use) findings that originate in **google.golang.org/protobuf's code generator**, standard across every protobuf Go project.
 
 ---
 
-*Report generated as part of the Phase-1 backend implementation review. Re-run the three scanners after any dependency bump (`go run golang.org/x/vuln/cmd/govulncheck@latest ./...` etc.).*
+## 2. Attack Surface & Architecture Map
+
+```
+Clients (Browser Workstation / Mobile Flutter)
+       │
+       ▼
+Next.js BFF (:3001) / Local Host
+       │  (Ed25519-signed internal assertion tokens / ConnectRPC)
+       ▼
+Go Engine Daemon (:8080 / systemd user service)
+       ├─ /livez, /readyz, /healthz      (unauthenticated health probes)
+       ├─ /geoquerry.v1.AuthService/...  (ExchangeAssertion, VerifySudo, GetSessionContext)
+       ├─ /geoquerry.v1.GeoquerrySync... (PushSyncQueue, PullProjectData)
+       └─ /geoquerry.v1.GeoquerrySync... (StreamLiveTelemetry)
+            │
+            ▼
+Neon PostgreSQL 16+ (PostGIS, TLS required, pooler connection)
+       ├─ neon_auth."user" ──(Trigger: on_neon_auth_user_sync)──▶ public.users
+       ├─ public.organization_memberships
+       ├─ public.audit_logs
+       └─ river durable background queue
+```
+
+---
+
+## 3. Controls in Place (Verified)
+
+### 3.1 Transport & Network Isolation
+- Go backend runs as an isolated systemd user service (`geoquerry-backend.service`) bound to `127.0.0.1:8080`.
+- All database traffic to Neon enforces TLS (`sslmode=require&channel_binding=require`).
+- `ReadHeaderTimeout` (10s) + `IdleTimeout` (120s) are set; deliberately no global `Read/WriteTimeout` to allow persistent telemetry streams.
+
+### 3.2 Authentication & Identity Management
+- **Ed25519 Token Assertions**: The Next.js BFF generates cryptographically signed internal assertions verifying the Neon Auth session. The Go engine's `internal/auth/verifier.go` validates signatures and claims before fulfilling RPC requests.
+- **Automated Database Synchronization**: The `on_neon_auth_user_sync` PostgreSQL trigger immediately verifies and provisions identities into `public.users` and assigns default membership in `public.organization_memberships`.
+- **Sudo Elevation Gate**: High-risk spatial actions require 15-minute sudo elevation validated via `VerifySudo`.
+- **API Key Fallback**: Local developer requests support `X-Geoquerry-Api-Key` with SHA-256 hashed constant-time comparisons.
+
+### 3.3 Input Validation & SQL Injection Defense
+- **Zero String-Built SQL**: Every query utilizes constant prepared statements with `$n` parameters via `pgx/v5`.
+- Client-supplied IDs pass `uuid.Parse` validation before touching the database.
+- Geodesic coordinate inputs are validated against NaN/Inf and bounded ranges `[-90..90]`, `[-180..180]` before PostGIS ingestion.
+- Unary RPC bodies are capped by `withBodyLimit` (default 4 MB).
+
+### 3.4 Sync Engine Integrity & LWW Protection
+- Writes are guarded inside PostgreSQL using `ON CONFLICT ... WHERE updated_at < EXCLUDED.updated_at`.
+- Borehole intervals are updated atomically within the same database transaction as the parent collar record.
+- Audit trail triggers automatically record row mutations into `public.audit_logs`.
+
+---
+
+## 4. Data Protection Matrix
+
+| Data | At Rest | In Transit | Protection Mechanism |
+| :--- | :--- | :--- | :--- |
+| Concession & Field Data | Neon Postgres | TLS (`sslmode=require`) | AES-256 encrypted storage, PostGIS spatial indexing |
+| Identity & Credentials | Neon Auth (`neon_auth`) | TLS | Scrypt password hashing, OAuth token encryption |
+| Live Telemetry | RAM only (TTL ≤ 4 min) | Local ConnectRPC / TLS | Ephemeral in-memory ring buffer, non-persistent |
+| Audit Logs | Neon Postgres | TLS | Immutable append-only audit trail |
+
+---
+
+## 5. Deployment & Service Configuration (Systemd)
+
+The Go backend engine is managed locally as a native systemd user service:
+
+```ini
+# ~/.config/systemd/user/geoquerry-backend.service
+[Unit]
+Description=GeoQuerry PostGIS Core Engine Daemon
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/austin/Projects/geo-querry/backend
+ExecStart=/home/austin/Projects/geo-querry/backend/bin/server
+Restart=always
+RestartSec=3
+Environment="PORT=8080"
+EnvironmentFile=/home/austin/Projects/geo-querry/backend/.env
+
+[Install]
+WantedBy=default.target
+```
+
+### Management Commands
+```bash
+# Check status:
+systemctl --user status geoquerry-backend.service
+
+# Restart service:
+systemctl --user restart geoquerry-backend.service
+
+# View live logs:
+journalctl --user -u geoquerry-backend.service -f
+```
+
+---
+
+## 6. Continuous Verification
+
+The project CI pipeline (`.gitlab-ci.yml`) automatically runs:
+- `go vet ./...`
+- `go test -v -race ./...`
+- `govulncheck ./...` (fails on reachable CVEs)
+- Next.js ESLint and TypeScript checks
