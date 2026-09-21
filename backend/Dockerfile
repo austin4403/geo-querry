@@ -15,8 +15,8 @@
 #   docker run -p 8080:8080 -e DATABASE_URL=postgres://... geoquerry-api
 
 # --- Stage 1: build ----------------------------------------------------------
-# go.mod declares go 1.25 (pgx v5.11 requires it) — keep this image in sync.
-FROM golang:1.25-alpine AS builder
+# go.mod declares go 1.26.0 (toolchain go1.26.8) — keep this image in sync.
+FROM golang:1.26-alpine AS builder
 
 # git is needed by Go modules resolving via VCS pseudo-versions; certs for
 # module proxy TLS.
@@ -38,31 +38,39 @@ COPY backend/ .
 # less information-leaking image.
 RUN CGO_ENABLED=0 GOOS=linux \
     go build -trimpath -ldflags="-s -w" \
-    -o /out/geoquerry-server ./cmd/server
+    -o /out/geoquerry-api \
+    ./cmd/server
 
-# --- Stage 2: runtime --------------------------------------------------------
+# Also compile the seed binary if an operator needs to populate dummy data
+# via `docker run --entrypoint /seed <image>`.
+RUN CGO_ENABLED=0 GOOS=linux \
+    go build -trimpath -ldflags="-s -w" \
+    -o /out/seed \
+    ./cmd/seed
+
+# Also compile the bench tool for telemetry soak-testing.
+RUN CGO_ENABLED=0 GOOS=linux \
+    go build -trimpath -ldflags="-s -w" \
+    -o /out/bench-telemetry \
+    ./cmd/bench-telemetry
+
+# --- Stage 2: scratch runtime ------------------------------------------------
 FROM scratch
 
-# CA certificates are REQUIRED in production: Neon Postgres refuses
-# non-TLS connections, and the future M-Pesa / Paystack / R2 integrations
-# all call HTTPS endpoints. A scratch image without this copy fails every
-# outbound TLS handshake with "x509: certificate signed by unknown
-# authority" — a classic scratch-image footgun.
-# (Timezone data needs no copy: the binary embeds it via time/tzdata.)
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+# ca-certificates from the builder stage: needed for HTTPS outgoing calls
+# (Stripe, M-Pesa Daraja, R2 presigning).
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
-COPY --from=builder /out/geoquerry-server /geoquerry-server
-
-# Run as an unprivileged user. scratch has no /etc/passwd, so this is the
-# raw numeric UID/GID (65532 = the "nobody" convention used by distroless).
-# If the container is ever compromised, the attacker lands as UID 65532:
-# no root, no group privileges, nothing to escalate within the container.
-USER 65532:65532
-
-# Koyeb injects PORT; we document the default for local docker runs.
-ENV PORT=8080
+# Koyeb Eco Nano exposes port 8080 by convention (PORT env var).
 EXPOSE 8080
 
-# scratch has no init: the binary IS PID 1 and handles SIGTERM itself
-# (see the graceful-shutdown logic in cmd/server/main.go).
-ENTRYPOINT ["/geoquerry-server"]
+# The compiled binary is entirely self-contained.
+COPY --from=builder /out/geoquerry-api /geoquerry-api
+COPY --from=builder /out/seed /seed
+COPY --from=builder /out/bench-telemetry /bench-telemetry
+
+# Run unprivileged. Koyeb containers run in isolated microVMs (Firecracker),
+# but principle of least privilege applies. User 65534 = nobody in Linux.
+USER 65534:65534
+
+ENTRYPOINT ["/geoquerry-api"]

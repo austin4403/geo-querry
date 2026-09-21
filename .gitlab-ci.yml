@@ -18,12 +18,12 @@ stages:
   - deploy
 
 variables:
-  # Alpine for cgo-free jobs (vet, scanners): small and fast.
-  GO_IMAGE: golang:1.25-alpine # pgx v5.11 requires >= 1.25, toolchain auto-upgrades to go1.26.8
+  # Alpine for cgo-free jobs (vet, scanners): small and fast. Pinned to Go 1.26.
+  GO_IMAGE: golang:1.26-alpine
   # Debian for the test job: -race REQUIRES cgo (a C compiler), which the
   # alpine image does not ship — "go: -race requires cgo" failure. The
   # debian golang image has gcc and CGO enabled by default.
-  GO_TEST_IMAGE: golang:1.25
+  GO_TEST_IMAGE: golang:1.26
   # Pinned Node.js LTS image for Next.js web application
   NODE_IMAGE: node:22-alpine
   # "auto" lets the go command fetch the toolchain the module declares (go1.26.8)
