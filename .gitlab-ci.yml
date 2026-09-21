@@ -99,38 +99,22 @@ build_docker:
     - docker:27-dind
   script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
-    # Two tags per build: the immutable <sha> for versioning/rollback, and
-    # mutable :latest which the Koyeb service points at — a redeploy then
-    # always picks up the freshest main build.
-    - docker build -t "$DOCKER_IMAGE" -t "$CI_REGISTRY_IMAGE/api:latest" -f backend/Dockerfile .
+    - docker build -t "$DOCKER_IMAGE" -f backend/Dockerfile .
     - docker push "$DOCKER_IMAGE"
-    - docker push "$CI_REGISTRY_IMAGE/api:latest"
   only:
     - main
 
 # --- Deploy ------------------------------------------------------------------
-# Koyeb redeploy: POST /v1/services/{id}/redeploy is Koyeb's documented
-# control-plane action (used by their own registry-webhook integrations).
-# The Koyeb service must reference <registry>/api:latest so the redeploy
-# re-pulls the image this pipeline just pushed. Env vars (DATABASE_URL,
-# GEOQUERRY_API_KEYS, CORS_ALLOWED_ORIGINS) live in Koyeb's service config
-# — see SECURITY.md §7.
-#
-# The job SKIPS ITSELF (rules) until both KOYEB_API_TOKEN and
-# KOYEB_SERVICE_ID are set as masked+protected CI variables — an unconfigured
-# deploy target must not turn the whole pipeline red.
+# Koyeb redeploys the service with the freshly pushed image. The API key
+# and database URL live in Koyeb's env config (see SECURITY.md §7).
 deploy_koyeb:
   stage: deploy
   image: curlimages/curl:latest
-  rules:
-    - if: '$CI_COMMIT_BRANCH == "main" && $KOYEB_API_TOKEN && $KOYEB_SERVICE_ID'
   script:
-    # -sS: quiet but NOT silent — errors and the response body stay visible
-    # in the job log (the old -sf swallowed the API's error message).
     - >
-      curl -sS -X POST
-      "https://app.koyeb.com/v1/services/${KOYEB_SERVICE_ID}/redeploy"
-      -H "Authorization: Bearer ${KOYEB_API_TOKEN}"
+      curl -sf -X POST "https://app.koyeb.com/v1/deployments"
+      -H "Authorization: Bearer $KOYEB_API_TOKEN"
       -H "Content-Type: application/json"
-      -d '{}'
-    - echo "Koyeb redeploy triggered for service ${KOYEB_SERVICE_ID}"
+      -d "{\"service\":\"$KOYEB_SERVICE_ID\",\"image\":\"$DOCKER_IMAGE\"}"
+  only:
+    - main
