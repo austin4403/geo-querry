@@ -31,7 +31,7 @@ class NeonAuthServer {
   }
 
   /**
-   * Retrieves the current user session from the signed cookie or upstream.
+   * Retrieves the current user session from the session cookie or upstream Neon Auth.
    * Conforms to auth.getSession() in @neondatabase/auth
    */
   public async getSession(): Promise<{ data: NeonAuthSession | null }> {
@@ -39,37 +39,71 @@ class NeonAuthServer {
       const cookieStore = await cookies();
       const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME);
 
-      if (!sessionCookie?.value) {
-        return { data: null };
+      if (sessionCookie?.value) {
+        const raw = Buffer.from(sessionCookie.value, "base64url").toString("utf8");
+        const parsed = JSON.parse(raw);
+
+        const userId = parsed.userId || parsed.user?.id;
+        const email = parsed.email || parsed.user?.email || "geologist@geoquerry.com";
+        const name = parsed.name || parsed.user?.name || email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+        const authTime = parsed.authTime || Math.floor(Date.now() / 1000);
+
+        // Check 15-day maximum lifetime
+        const now = Math.floor(Date.now() / 1000);
+        if (now - authTime <= 15 * 86400) {
+          return {
+            data: {
+              user: {
+                id: userId,
+                email,
+                name,
+              },
+              session: {
+                id: `sess_${userId}`,
+                createdAt: new Date(authTime * 1000).toISOString(),
+                expiresAt: new Date((authTime + 15 * 86400) * 1000).toISOString(),
+              },
+            },
+          };
+        }
       }
 
-      const raw = Buffer.from(sessionCookie.value, "base64url").toString("utf8");
-      const parsed = JSON.parse(raw);
+      // Check Neon Auth upstream session token
+      const neonToken =
+        cookieStore.get("__Secure-neon-auth.session_token")?.value ||
+        cookieStore.get("neon-auth.session_token")?.value;
 
-      const userId = parsed.userId || parsed.user?.id;
-      const email = parsed.email || parsed.user?.email || "user@geoquerry.local";
-      const authTime = parsed.authTime || Math.floor(Date.now() / 1000);
+      if (neonToken && this.baseUrl) {
+        const neonUrl = new URL(this.baseUrl);
+        const res = await fetch(`${this.baseUrl.replace(/\/$/, "")}/get-session`, {
+          headers: {
+            host: neonUrl.host,
+            Cookie: `__Secure-neon-auth.session_token=${neonToken}; neon-auth.session_token=${neonToken}`,
+          },
+        });
 
-      // Check 15-day maximum lifetime
-      const now = Math.floor(Date.now() / 1000);
-      if (now - authTime > 15 * 86400) {
-        return { data: null };
+        if (res.ok) {
+          const upstream = await res.json();
+          if (upstream?.user) {
+            return {
+              data: {
+                user: {
+                  id: upstream.user.id,
+                  email: upstream.user.email,
+                  name: upstream.user.name,
+                },
+                session: {
+                  id: upstream.session?.id || `sess_${upstream.user.id}`,
+                  createdAt: upstream.session?.createdAt || new Date().toISOString(),
+                  expiresAt: upstream.session?.expiresAt || new Date(Date.now() + 7 * 86400000).toISOString(),
+                },
+              },
+            };
+          }
+        }
       }
 
-      return {
-        data: {
-          user: {
-            id: userId,
-            email,
-            name: email.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()),
-          },
-          session: {
-            id: `sess_${userId}`,
-            createdAt: new Date(authTime * 1000).toISOString(),
-            expiresAt: new Date((authTime + 15 * 86400) * 1000).toISOString(),
-          },
-        },
-      };
+      return { data: null };
     } catch {
       return { data: null };
     }
@@ -82,6 +116,16 @@ class NeonAuthServer {
     try {
       const cookieStore = await cookies();
       cookieStore.delete(SESSION_COOKIE_NAME);
+      cookieStore.delete("__Secure-neon-auth.session_token");
+      cookieStore.delete("neon-auth.session_token");
+
+      if (this.baseUrl) {
+        const neonUrl = new URL(this.baseUrl);
+        await fetch(`${this.baseUrl.replace(/\/$/, "")}/sign-out`, {
+          method: "POST",
+          headers: { host: neonUrl.host },
+        }).catch(() => {});
+      }
     } catch {
       // ignore
     }
@@ -96,6 +140,30 @@ class NeonAuthServer {
       if (!password || password.length < 6) {
         return { error: { message: "Invalid credentials: minimum 6 characters required" }, data: null };
       }
+
+      if (this.baseUrl) {
+        try {
+          const neonUrl = new URL(this.baseUrl);
+          const res = await fetch(`${this.baseUrl.replace(/\/$/, "")}/sign-in/email`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              host: neonUrl.host,
+            },
+            body: JSON.stringify({ email, password }),
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            return { error: null, data };
+          }
+          const err = await res.json().catch(() => ({}));
+          return { error: { message: err.message || "Invalid email or password" }, data: null };
+        } catch {
+          // fallback
+        }
+      }
+
       return {
         error: null,
         data: {
@@ -112,7 +180,11 @@ class NeonAuthServer {
     const loginUrl = options?.loginUrl || "/login";
     return async (req: NextRequest) => {
       const sessionCookie = req.cookies.get(SESSION_COOKIE_NAME);
-      if (!sessionCookie?.value) {
+      const neonToken =
+        req.cookies.get("__Secure-neon-auth.session_token") ||
+        req.cookies.get("neon-auth.session_token");
+
+      if (!sessionCookie?.value && !neonToken?.value) {
         return NextResponse.redirect(new URL(loginUrl, req.url));
       }
       return NextResponse.next();
@@ -120,7 +192,7 @@ class NeonAuthServer {
   }
 
   /**
-   * Dispatches or proxies auth API requests for /api/auth/[...path]
+   * Dispatches or proxies auth API requests for /api/auth/[...path] to Neon Auth
    */
   public handler() {
     const handleRequest = async (
@@ -131,41 +203,97 @@ class NeonAuthServer {
       const pathSegments = resolvedParams.path || [];
       const subpath = pathSegments.join("/");
 
-      // Upstream proxy if valid live NEON_AUTH_BASE_URL is configured
-      const isPlaceholder =
-        !this.baseUrl ||
-        this.baseUrl.includes("sample") ||
-        this.baseUrl.includes("ep-xxx") ||
-        this.baseUrl.includes("placeholder");
+      const isLiveNeon =
+        this.baseUrl &&
+        !this.baseUrl.includes("sample") &&
+        !this.baseUrl.includes("ep-xxx") &&
+        !this.baseUrl.includes("placeholder");
 
-      if (this.baseUrl && !isPlaceholder) {
+      if (isLiveNeon && this.baseUrl) {
         try {
+          const neonUrl = new URL(this.baseUrl);
           const upstreamUrl = `${this.baseUrl.replace(/\/$/, "")}/${subpath}`;
-          const headers = new Headers(req.headers);
-          headers.set("host", new URL(this.baseUrl).host);
+
+          const headers = new Headers();
+          req.headers.forEach((val, key) => {
+            const k = key.toLowerCase();
+            // Strip forwarded headers that cause Neon hostname validation to fail
+            if (
+              k !== "host" &&
+              !k.startsWith("x-forwarded") &&
+              k !== "content-length"
+            ) {
+              headers.set(key, val);
+            }
+          });
+          headers.set("host", neonUrl.host);
+
+          const cookieHeader = req.headers.get("cookie");
+          if (cookieHeader) {
+            headers.set("cookie", cookieHeader);
+          }
+
+          const reqBody =
+            req.method !== "GET" && req.method !== "HEAD" ? await req.text() : undefined;
 
           const upstreamRes = await fetch(upstreamUrl, {
             method: req.method,
             headers,
-            body: req.method !== "GET" && req.method !== "HEAD" ? await req.text() : undefined,
+            body: reqBody,
             redirect: "manual",
           });
 
-          if (upstreamRes.ok) {
-            return new Response(upstreamRes.body, {
-              status: upstreamRes.status,
-              statusText: upstreamRes.statusText,
-              headers: upstreamRes.headers,
-            });
+          // Forward response with upstream headers & cookies
+          const resHeaders = new Headers();
+          upstreamRes.headers.forEach((val, key) => {
+            if (key.toLowerCase() !== "content-encoding") {
+              resHeaders.append(key, val);
+            }
+          });
+
+          const rawBody = await upstreamRes.text();
+
+          // If upstream succeeded on sign-in or sign-up, synchronize our local session cookie
+          if (upstreamRes.ok && (subpath.includes("sign-in") || subpath.includes("sign-up"))) {
+            try {
+              const data = JSON.parse(rawBody);
+              const user = data.user;
+              if (user && user.id && user.email) {
+                const now = Math.floor(Date.now() / 1000);
+                const payload = {
+                  userId: user.id,
+                  email: user.email,
+                  name: user.name || "Chief Geologist",
+                  authTime: now,
+                  sudoExpiresAt: now + 900,
+                };
+
+                const serialized = Buffer.from(JSON.stringify(payload)).toString("base64url");
+                const cookieStore = await cookies();
+                cookieStore.set(SESSION_COOKIE_NAME, serialized, {
+                  httpOnly: true,
+                  secure: process.env.NODE_ENV === "production",
+                  sameSite: "lax",
+                  path: "/",
+                  maxAge: 15 * 86400,
+                });
+              }
+            } catch {
+              // ignore parse errors
+            }
           }
 
-          console.warn(`[Neon Auth] Upstream responded ${upstreamRes.status}, falling back to local handler`);
+          return new Response(rawBody, {
+            status: upstreamRes.status,
+            statusText: upstreamRes.statusText,
+            headers: resHeaders,
+          });
         } catch (err) {
           console.warn("[Neon Auth] Upstream proxy error, falling back to local handler:", err);
         }
       }
 
-      // Local / Offline Managed Neon Auth Handler
+      // Offline fallback if upstream unreachable
       if (req.method === "GET") {
         if (subpath === "session" || subpath === "get-session") {
           const { data } = await this.getSession();
@@ -188,9 +316,8 @@ class NeonAuthServer {
           body = {};
         }
 
-        const email = String(body.email || "chief.geologist@geoquerry.local").trim().toLowerCase();
-        const handle = email.split("@")[0].replace(/[^a-zA-Z0-9]/g, "_");
-        const userId = (body.userId as string) || `usr_${handle}`;
+        const email = String(body.email || "geologist@geoquerry.com").trim().toLowerCase();
+        const userId = (body.userId as string) || `c04df38c-13e2-48c7-a367-d451a3b955d2`;
 
         const redirectTarget =
           (body.callbackURL as string) ||
@@ -202,6 +329,7 @@ class NeonAuthServer {
         const payload = {
           userId,
           email,
+          name: "Chief Geologist",
           authTime: now,
           sudoExpiresAt: now + 900,
         };
