@@ -19,16 +19,14 @@ stages:
 
 variables:
   # Alpine for cgo-free jobs (vet, scanners): small and fast.
-  GO_IMAGE: golang:1.25-alpine # must match go.mod's toolchain (pgx v5.11 requires 1.25)
+  GO_IMAGE: golang:1.25-alpine # pgx v5.11 requires >= 1.25, toolchain auto-upgrades to go1.26.8
   # Debian for the test job: -race REQUIRES cgo (a C compiler), which the
   # alpine image does not ship — "go: -race requires cgo" failure. The
   # debian golang image has gcc and CGO enabled by default.
   GO_TEST_IMAGE: golang:1.25
   # Pinned Node.js LTS image for Next.js web application
   NODE_IMAGE: node:22-alpine
-  # Official golang Docker images set GOTOOLCHAIN=local, which makes
-  # `go run pkg@latest` FAIL when the latest release needs a newer Go.
-  # "auto" lets the go command fetch the toolchain the tool declares.
+  # "auto" lets the go command fetch the toolchain the module declares (go1.26.8)
   GOTOOLCHAIN: auto
   DOCKER_IMAGE: $CI_REGISTRY_IMAGE/api:$CI_COMMIT_SHORT_SHA
 
@@ -73,12 +71,13 @@ web_quality:
 # govulncheck: official Go vulnerability database, CALL-GRAPH aware — it
 # only fails when a known CVE is actually reachable from our code, so a
 # transitive dependency with an irrelevant advisory doesn't block the pipe.
+# Pinned to v1.8.0 with toolchain go1.26.8 to resolve standard library CVEs.
 govulncheck:
   stage: security
   image: $GO_IMAGE
   script:
     - cd backend
-    - go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+    - go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
   allow_failure: false
 
 # gosec: static security analysis (CWE rules) pinned to v2.22.1. pkg/proto is GENERATED code

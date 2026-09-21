@@ -5,6 +5,8 @@ module gitlab.com/austin4403/geoquerry/backend
 // are covered: GOTOOLCHAIN=auto (the default) fetches go1.25 automatically.
 go 1.26.0
 
+toolchain go1.26.8
+
 require (
 	connectrpc.com/connect v1.18.1
 	github.com/aws/aws-sdk-go-v2 v1.47.0
