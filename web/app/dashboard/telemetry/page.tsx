@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +15,21 @@ import {
   Signal,
   CheckCircle2,
   ShieldAlert,
+  Layers,
 } from "lucide-react";
+
+// Dynamic import of MapLibre container to isolate browser/DOM initialization
+const TelemetryMapWrapper = dynamic(
+  () => import("@/components/gis/TelemetryMapWrapper").then((mod) => mod.TelemetryMapWrapper),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-[420px] rounded-lg bg-[#09090b] border border-zinc-800 flex items-center justify-center text-zinc-500 font-mono text-xs">
+        Initializing Carto Dark Matter GIS Canvas...
+      </div>
+    ),
+  }
+);
 
 interface GeologistLiveStatus {
   id: string;
@@ -59,14 +74,14 @@ const initialGeologists: GeologistLiveStatus[] = [
   },
   {
     id: "geo-003",
-    name: "Emmanuel Kiprono",
-    role: "Senior Geochemist",
-    lat: 3.1341,
-    lng: 35.9015,
-    elevation: 685.2,
-    heading: 310,
+    name: "Kiprono Bett",
+    role: "Core Drilling Supervisor",
+    lat: 3.1212,
+    lng: 35.8945,
+    elevation: 635.8,
+    heading: 275,
     battery: 18,
-    lastSeen: "14s ago",
+    lastSeen: "12s ago",
     isActive: true,
     sosAlert: false,
   },
@@ -87,7 +102,7 @@ const initialGeologists: GeologistLiveStatus[] = [
 
 export default function TelemetryPage() {
   const [geologists, setGeologists] = useState<GeologistLiveStatus[]>(initialGeologists);
-  const [ticketStatus, setTicketStatus] = useState<string>("Ready (Token TTL 30s)");
+  const [ticketStatus] = useState<string>("Ready (Token TTL 30s)");
   const [isSimulating, setIsSimulating] = useState(true);
 
   // Live telemetry pulse simulation
@@ -199,6 +214,40 @@ export default function TelemetryPage() {
         </Card>
       </div>
 
+      {/* Interactive Map Section */}
+      <Card className="overflow-hidden border border-[var(--border)]">
+        <CardHeader className="p-4 border-b border-[var(--border)] bg-zinc-950/60">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <CardTitle className="text-base flex items-center space-x-2">
+                <Layers className="h-4 w-4 text-emerald-400" />
+                <span>Carto Dark Matter Telemetry Map</span>
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Live position markers with heading vectors, battery levels, and SOS pulse beacons.
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-3 text-xs font-mono">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span className="text-zinc-400">Normal</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+                <span className="text-zinc-400">SOS Distress</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-zinc-600"></span>
+                <span className="text-zinc-400">Offline</span>
+              </div>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <TelemetryMapWrapper geologists={geologists} />
+        </CardContent>
+      </Card>
+
       {/* Geologists Telemetry Table */}
       <Card>
         <CardHeader className="p-4">
@@ -279,17 +328,27 @@ export default function TelemetryPage() {
                         g.sosAlert ? "destructive" : g.isActive ? "success" : "default"
                       }
                     >
-                      {g.sosAlert ? "SOS DISTRESS" : g.isActive ? `ONLINE (${g.lastSeen})` : "RADIO SILENCE"}
+                      {g.sosAlert ? "SOS DISTRESS" : g.isActive ? "ONLINE" : "RADIO SILENCE"}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
                     <Button
-                      variant={g.sosAlert ? "destructive" : "outline"}
                       size="sm"
+                      variant={g.sosAlert ? "secondary" : "destructive"}
                       onClick={() => toggleEmergency(g.id)}
                       className="text-xs py-1 h-7"
                     >
-                      {g.sosAlert ? "Clear SOS" : "Trigger SOS"}
+                      {g.sosAlert ? (
+                        <>
+                          <CheckCircle2 className="h-3 w-3 mr-1 text-emerald-500" />
+                          Clear SOS
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle className="h-3 w-3 mr-1" />
+                          Simulate SOS
+                        </>
+                      )}
                     </Button>
                   </TableCell>
                 </TableRow>
