@@ -75,7 +75,7 @@ func (s *Service) ExchangeAssertion(
 	var displayName, email string
 	if s.pool != nil {
 		err := s.pool.QueryRow(ctx, `
-			SELECT display_name, email
+			SELECT full_name, email
 			FROM users
 			WHERE id = $1
 		`, claims.Subject).Scan(&displayName, &email)
@@ -150,7 +150,7 @@ func (s *Service) GetSessionContext(
 	var displayName, email string
 	if s.pool != nil {
 		_ = s.pool.QueryRow(ctx, `
-			SELECT display_name, email FROM users WHERE id = $1
+			SELECT full_name, email FROM users WHERE id = $1
 		`, ident.UserID).Scan(&displayName, &email)
 	}
 	if email == "" {
